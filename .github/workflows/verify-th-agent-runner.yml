@@ -24,7 +24,7 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          runner=json.loads(Path('.runner').read_text())
+          runner=json.loads(Path('.runner').read_text(encoding='utf-8-sig'))
           assert runner['agentName']=='th-agent'
           assert runner['gitHubUrl'].rstrip('/').lower()=='https://github.com/tuanpham0411/th-agent'
           print('Runner th-agent is receiving jobs for TuanPham0411/TH-Agent.')
