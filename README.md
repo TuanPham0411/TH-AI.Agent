@@ -35,3 +35,11 @@ uses the deployment implementation pinned from TH-RPI.Server, retains existing
 volumes and .env, creates a local database backup, uploads a Drive baseline and
 verifies application readiness. A failed migration keeps the maintenance fence and
 backup for operator recovery instead of silently accepting unsynchronized writes.
+
+In central Drive-first mode, the Google owner can sign in from Prompt Studio and
+save named drafts privately. Each save is revision-checked and is acknowledged
+only after the server platform has committed the JSON to Drive. The draft list
+and preferences use the local PostgreSQL projection for reads. Anonymous editing
+remains in the open browser tab; saving requires explicit owner action. Google
+OAuth and session persistence belong to TH-RPI.Server, not the AI container.
+Register `https://ai.th.io.vn/api/oauth/callback` in the existing OAuth client.
