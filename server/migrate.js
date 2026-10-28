@@ -1,0 +1,3 @@
+import pg from 'pg';import {readFile} from 'node:fs/promises';import path from 'node:path';
+if(!process.env.DATABASE_URL)throw Error('DATABASE_URL is required');
+const client=new pg.Client({connectionString:process.env.DATABASE_URL});await client.connect();try{await client.query('BEGIN');await client.query("SELECT pg_advisory_xact_lock(73103100)");await client.query(await readFile(path.join(process.env.MIGRATIONS_DIR||'server/migrations','001-foundation.sql'),'utf8'));await client.query('COMMIT');console.log('AI migration 001 applied');}catch(e){await client.query('ROLLBACK');throw e;}finally{await client.end();}

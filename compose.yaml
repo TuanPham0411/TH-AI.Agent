@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: th_ai
+      POSTGRES_USER: th_ai_api
+      POSTGRES_PASSWORD: ${TH_AI_DB_PASSWORD:?Set TH_AI_DB_PASSWORD securely}
+    volumes: ["ai-db:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U th_ai_api -d th_ai"]
+      interval: 5s
+      retries: 12
+  migrate:
+    build: {context: ., target: api}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the compose db service}
+    command: ["node", "server/migrate.js"]
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    build: {context: ., target: api}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the compose db service}
+    volumes: ["ai-files:/var/lib/th-ai/files"]
+    mem_limit: 224m
+    cpus: 0.5
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      retries: 5
+  web:
+    build: {context: ., target: web}
+    ports: ["127.0.0.1:8081:80"]
+    depends_on:
+      api: {condition: service_healthy}
+volumes:
+  ai-db:
+  ai-files:
