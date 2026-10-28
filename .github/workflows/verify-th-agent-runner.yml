@@ -1,0 +1,37 @@
+name: Verify TH Agent runner
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/verify-th-agent-runner.yml]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  verify:
+    if: github.repository == 'TuanPham0411/TH-Agent' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, ARM64, th-agent]
+    timeout-minutes: 3
+    steps:
+      - name: Verify separate runner identity and existing services
+        shell: bash
+        env:
+          SELECTED_RUNNER: ${{ runner.name }}
+        run: |
+          set -euo pipefail
+          test "$SELECTED_RUNNER" = th-agent
+          test "$(hostname -s)" = th-server
+          test "$(uname -m)" = aarch64
+          cd "$HOME/actions-runner-th-agent"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          runner=json.loads(Path('.runner').read_text())
+          assert runner['agentName']=='th-agent'
+          assert runner['gitHubUrl'].rstrip('/').lower()=='https://github.com/tuanpham0411/th-agent'
+          print('Runner th-agent is receiving jobs for TuanPham0411/TH-Agent.')
+          PY
+          if command -v crontab >/dev/null; then
+            crontab -l | grep -F 'actions-runner-th-agent/start-th-agent.sh' >/dev/null
+            echo 'Reboot startup entry verified.'
+          fi
+          systemctl is-active th-app nginx postgresql cloudflared ssh
+          curl --fail --silent --show-error --max-time 15 -H 'Host: mes.th.io.vn' http://127.0.0.1:3000/api/health

@@ -8,7 +8,7 @@ on:
       deploy:
         type: boolean
         default: false
-        description: Deploy to the provisioned th-server runner
+        description: Deploy to the provisioned th-agent runner
 permissions:
   contents: read
 concurrency:
@@ -64,12 +64,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/main'
     needs: build
     environment: th-ai-production
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [self-hosted, Linux, ARM64, th-agent]
     timeout-minutes: 10
     steps:
       - name: Verify runner
         env: {SELECTED_RUNNER: '${{ runner.name }}'}
-        run: test "$SELECTED_RUNNER" = th-server
+        run: test "$SELECTED_RUNNER" = th-agent
       - uses: actions/download-artifact@v4
         with:
           name: ai-release
