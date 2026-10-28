@@ -1,4 +1,9 @@
 node_modules/
 dist/
+work/
 .env
+.env.*
+!.env.example
 *.log
+*.dump
+*.tar.gz

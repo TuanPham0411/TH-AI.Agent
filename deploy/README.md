@@ -1,3 +1,5 @@
+> Deployment deferred: use docs/REINSTALL.md. Legacy native instructions below are reference only; no production workflow is enabled.
+
 # Triển khai TH-AI riêng trên th-server
 
 Chưa thực thi trên RPI. Không thay đổi service `th-app`, cổng 3000, database `th_app`, tunnel SSH hay cấu hình MES. Chỉ triển khai mã tin cậy. Giới hạn AI: RAM 224 MB, heap 128 MB, CPU 50%, pool PostgreSQL 2 kết nối; cần đo tổng tài nguyên trên máy trước khi bật.

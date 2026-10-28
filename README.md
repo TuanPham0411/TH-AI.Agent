@@ -1,24 +1,21 @@
-# TH · AI Workspace
+# TH AI Agent
 
-Ứng dụng AI độc lập tại `ai.th.io.vn`, tham khảo kiến trúc MES `TuanPham0411/Thien-Ha` tại commit `66aa6e527d496679e3941eae02587e17660940ff`.
+Independent basic AI Agent workspace at https://ai.th.io.vn. Repository: https://github.com/TuanPham0411/TH-AI.Agent. This application has its own frontend/API, database, files, Docker images and release workflow. It does not depend on Portfolio/MES source, accounts or cookies.
 
-Bản nền tảng dùng JavaScript/CSS, Vite, Node.js 22, Express 5 và PostgreSQL. Có giao diện tối mặc định, bố cục di động, Việt/Anh, lựa chọn giao diện lưu trên trình duyệt và các trang trống. Không có dữ liệu mẫu giả hoạt động, chức năng AI, đăng nhập, phân quyền hoặc SSO. Chưa tạo tài khoản owner và không sử dụng cookie `th_mes`.
+## Available now
 
-## Phát triển
+Responsive dark/light/system interface, Vietnamese/English preferences, agent-role and capability introductions, a simple reviewable workflow overview, and **Prompt Studio**: enter a goal, context, constraints and desired output, then prepare/copy/download a structured prompt locally. Prompt text is not transmitted to a model or saved on the server. There is no fabricated chatbot, active agent, workload count or login. Model/provider integration and authenticated tools are intentionally not configured in this basic release.
 
-```sh
-cd /workspace/TH-Agent
-# Dùng Node.js 22 theo .nvmrc
-npm ci
-npm test
-npm run build
-npm run dev:server
-# Terminal khác, cùng thư mục:
-npm run dev
-```
+## Develop
 
-Vite proxy `/api` tới `127.0.0.1:3100`. API health tại `/api/health`; `/api/ready` trả 503 nếu PostgreSQL/migration chưa sẵn sàng. Không cần khóa AI cho bản này. Không có API dữ liệu riêng tư; phải triển khai xác thực và kiểm tra quyền phía server trước khi thêm dữ liệu/nghiệp vụ.
+Node.js 22.12+, PostgreSQL 17. Run `npm ci`, `npm test`, `npm run build`; `npm run dev:server` starts the API at loopback 3100 and `npm run dev` starts the Vite frontend proxy. Configure a dedicated `DATABASE_URL`, run `npm run migrate` first. Database integration tests use a disposable `TEST_DATABASE_URL` and `npm run test:integration`. `/api/health` identifies the API, `/api/ready` verifies the schema/database rather than implying a connected AI model.
 
-Đặt `DATABASE_URL` của database phát triển riêng qua cấu hình cục bộ an toàn, chạy `npm run migrate`. Migration hiện tại chỉ tạo bảng phiên bản. Kiểm thử tích hợp dùng `TEST_DATABASE_URL` của database test dùng riêng, chạy `npm test`; nếu thiếu biến, bài test database được báo bỏ qua.
+## Docker
 
-Xem [triển khai](deploy/README.md) và [kiến trúc hiện tại](docs/architecture.vi.md).
+Copy `.env.example` to a private `.env` and set two distinct generated hexadecimal passwords. Later run `docker compose up -d --build`. Separate services: PostgreSQL (no published DB port), migration operator, restricted API role, and Nginx web. Host loopback port **8081**. Published AMD64/ARM64 images: `ghcr.io/tuanpham0411/th-ai-agent-api:latest` and `ghcr.io/tuanpham0411/th-ai-agent-web:latest`; immutable commit tags are also published. Named volumes persist database/files.
+
+## Build only — production deferred
+
+GitHub Actions builds/tests on hosted runners, packages checksummed source and ARM64 release archives with official Node.js 22, and publishes images. Artifacts are retained for 30 days. Previous RPI deployment and runner verification triggers have been removed; nothing automatically deploys to the old RPI. A newly provisioned TH-Server, secrets, database and explicit deployment authorization are required before going live.
+
+Read [replacement-server guide](docs/REINSTALL.md) and [release usage](RELEASE-README.md). The legacy native installer remains as an optional reviewed reference; the independent Docker Compose configuration is the recommended fresh-server path. No runtime data, secrets or runner credentials are included.
