@@ -5,7 +5,7 @@ const origin='https://ai.th.io.vn';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const cookie=(req,name)=>{const value=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='));return value?value.slice(name.length+1):'';};
 export function ownerRoutes({pool,request=bodyRequest}={}){
- const router=express.Router();router.use(express.json({limit:'64kb'}));
+ const router=express.Router();router.use(express.json({limit:'512kb'}));
  const run=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  const session=req=>request('/v1/auth/session',{session:cookie(req,'__Host-th-ai')});
  router.get('/auth/session',run(async(req,res)=>res.json(await session(req))));
@@ -18,7 +18,7 @@ export function ownerRoutes({pool,request=bodyRequest}={}){
  router.get('/drafts/:id',run(async(req,res)=>{if(!uuid(req.params.id))return res.status(400).json({error:'Invalid draft'});const {rows}=await pool.query('SELECT * FROM ai_drafts WHERE id=$1',[req.params.id]);if(!rows.length)return res.status(404).json({error:'Draft not found'});res.json(rows[0]);}));
  router.put('/drafts/:id',run(async(req,res)=>{
   if(!req.body||!uuid(req.params.id)||!Number.isSafeInteger(req.body.revision)||req.body.revision<0||!req.body.content||Object.keys(req.body.content).some(k=>!['goal','context','constraints','format'].includes(k))||!['goal','context','constraints','format'].every(k=>typeof req.body.content[k]==='string'&&req.body.content[k].length<=12000))return res.status(400).json({error:'Invalid draft fields'});
-  const db=await pool.connect();try{await db.query('BEGIN');const title=req.body.content.goal.trim().slice(0,120)||'Untitled';let result;
+  const db=await pool.connect();try{await db.query('BEGIN');const title=Array.from(req.body.content.goal.trim()).slice(0,120).join('')||'Untitled';let result;
    if(req.body.revision===0)result=await db.query('INSERT INTO ai_drafts(id,title,content,revision) VALUES($1,$2,$3,1) ON CONFLICT DO NOTHING RETURNING id,revision,updated_at',[req.params.id,title,JSON.stringify(req.body.content)]);
    else result=await db.query('UPDATE ai_drafts SET title=$2,content=$3,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$4 RETURNING id,revision,updated_at',[req.params.id,title,JSON.stringify(req.body.content),req.body.revision]);
    if(!result.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'Draft changed elsewhere; reload before saving'});}await db.query('COMMIT');res.json({...result.rows[0],durable:true});
