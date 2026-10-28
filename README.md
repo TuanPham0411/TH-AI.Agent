@@ -19,3 +19,19 @@ Copy `.env.example` to a private `.env` and set two distinct generated hexadecim
 GitHub Actions builds/tests on hosted runners, packages checksummed source and ARM64 release archives with official Node.js 22, and publishes images. Artifacts are retained for 30 days. Previous RPI deployment and runner verification triggers have been removed; nothing automatically deploys to the old RPI. A newly provisioned TH-Server, secrets, database and explicit deployment authorization are required before going live.
 
 Read [replacement-server guide](docs/REINSTALL.md) and [release usage](RELEASE-README.md). The legacy native installer remains as an optional reviewed reference; the independent Docker Compose configuration is the recommended fresh-server path. No runtime data, secrets or runner credentials are included.
+
+
+## TH-Server managed storage
+
+The optional `storage.compose.yaml` enables the canonical TH-RPI.Server broker.
+Application SQL transactions are acknowledged by Drive before committing the local
+PostgreSQL projection. Unchanged reads stay local. SQL function writes, background
+jobs and metadata changes use the same capture protocol. Each application has a
+separate broker credential, database and files volume. Do not copy Drive OAuth tokens
+into this repository or switch a provider manually.
+
+The managed deployment workflow runs only after a successful trusted main build. It
+uses the deployment implementation pinned from TH-RPI.Server, retains existing
+volumes and .env, creates a local database backup, uploads a Drive baseline and
+verifies application readiness. A failed migration keeps the maintenance fence and
+backup for operator recovery instead of silently accepting unsynchronized writes.
