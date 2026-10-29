@@ -1,49 +1,17 @@
 # TH AI.Agent — n8n workspace
 
-The active deployment is the n8n multi-agent workspace at https://ai.th.io.vn. Read [setup, credentials and recovery](n8n/README.md). The former Prompt Studio remains in this repository and its existing database is preserved; its workflows are now manual and cannot overwrite an active n8n deployment.
+n8n Community runs at https://ai.th.io.vn with an editable multi-agent workflow: AI Agent, Research Agent, Sheet Agent, Gemini models, private PostgreSQL memory, Think, Perplexity and Google Sheets.
 
-# TH AI Agent
+Read [setup, credentials, operation and recovery](n8n/README.md). The initial workflow is inactive until provider credentials and the destination spreadsheet are configured. Installing the workspace does not make paid model calls.
 
-Independent basic AI Agent workspace at https://ai.th.io.vn. Repository: https://github.com/TuanPham0411/TH-AI.Agent. This application has its own frontend/API, database, files, Docker images and release workflow. It does not depend on Portfolio/MES source, accounts or cookies.
+## Build and deployment
 
-## Available now
+`.github/workflows/n8n.yml` tests an actual n8n runtime and workflow import, publishes immutable AMD64/ARM64 runtime and gateway images to GHCR, and deploys using the `th-ai.agent` runner. Shared deployment, swap, encrypted Drive backup and isolated restore verification are managed by `TH-RPI.Server/n8n/`.
 
-Responsive dark/light/system interface, Vietnamese/English preferences, agent-role and capability introductions, a simple reviewable workflow overview, and **Prompt Studio**: enter a goal, context, constraints and desired output, then prepare/copy/download a structured prompt locally. Prompt text is not transmitted to a model or saved on the server. There is no fabricated chatbot, active agent, workload count or login. Model/provider integration and authenticated tools are intentionally not configured in this basic release.
+n8n uses its own `th_n8n` PostgreSQL database and a backup every 30 minutes to `th-data/ai-agent/n8n/backups/`. This is the agreed PostgreSQL plus periodic backup exception to the other websites' Drive-first storage policy. Keep the TH-Server recovery key outside the Pi.
 
-## Develop
+## Preserved AI foundation
 
-Node.js 22.12+, PostgreSQL 17. Run `npm ci`, `npm test`, `npm run build`; `npm run dev:server` starts the API at loopback 3100 and `npm run dev` starts the Vite frontend proxy. Configure a dedicated `DATABASE_URL`, run `npm run migrate` first. Database integration tests use a disposable `TEST_DATABASE_URL` and `npm run test:integration`. `/api/health` identifies the API, `/api/ready` verifies the schema/database rather than implying a connected AI model.
+The former Prompt Studio source, database and files remain available for recovery. Its build/deploy workflows are manual, and its deployment refuses to replace an active n8n installation. Legacy development uses `npm ci`, `npm test` and `npm run build`; deployment references are in [RELEASE-README.md](RELEASE-README.md) and [docs/REINSTALL.md](docs/REINSTALL.md). Do not run the legacy Compose stack on port 8081 while n8n owns that port.
 
-## Docker
-
-Copy `.env.example` to a private `.env` and set two distinct generated hexadecimal passwords. Later run `docker compose up -d --build`. Separate services: PostgreSQL (no published DB port), migration operator, restricted API role, and Nginx web. Host loopback port **8081**. Published AMD64/ARM64 images: `ghcr.io/tuanpham0411/th-ai-agent-api:latest` and `ghcr.io/tuanpham0411/th-ai-agent-web:latest`; immutable commit tags are also published. Named volumes persist database/files.
-
-## Build only — production deferred
-
-GitHub Actions builds/tests on hosted runners, packages checksummed source and ARM64 release archives with official Node.js 22, and publishes images. Artifacts are retained for 30 days. Previous RPI deployment and runner verification triggers have been removed; nothing automatically deploys to the old RPI. A newly provisioned TH-Server, secrets, database and explicit deployment authorization are required before going live.
-
-Read [replacement-server guide](docs/REINSTALL.md) and [release usage](RELEASE-README.md). The legacy native installer remains as an optional reviewed reference; the independent Docker Compose configuration is the recommended fresh-server path. No runtime data, secrets or runner credentials are included.
-
-
-## TH-Server managed storage
-
-The optional `storage.compose.yaml` enables the canonical TH-RPI.Server broker.
-Application SQL transactions are acknowledged by Drive before committing the local
-PostgreSQL projection. Unchanged reads stay local. SQL function writes, background
-jobs and metadata changes use the same capture protocol. Each application has a
-separate broker credential, database and files volume. Do not copy Drive OAuth tokens
-into this repository or switch a provider manually.
-
-The managed deployment workflow runs only after a successful trusted main build. It
-uses the deployment implementation pinned from TH-RPI.Server, retains existing
-volumes and .env, creates a local database backup, uploads a Drive baseline and
-verifies application readiness. A failed migration keeps the maintenance fence and
-backup for operator recovery instead of silently accepting unsynchronized writes.
-
-In central Drive-first mode, the Google owner can sign in from Prompt Studio and
-save named drafts privately. Each save is revision-checked and is acknowledged
-only after the server platform has committed the JSON to Drive. The draft list
-and preferences use the local PostgreSQL projection for reads. Anonymous editing
-remains in the open browser tab; saving requires explicit owner action. Google
-OAuth and session persistence belong to TH-RPI.Server, not the AI container.
-Register `https://ai.th.io.vn/api/oauth/callback` in the existing OAuth client.
+No passwords, OAuth secrets, model keys or runtime data belong in Git.
