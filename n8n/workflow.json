@@ -1,0 +1,397 @@
+{
+  "id": "THAIMultiAgent01",
+  "name": "TH AI.Agent · Research & Sheets",
+  "active": false,
+  "nodes": [
+    {
+      "id": "871fc7d3-67ba-5a02-b011-ad70351d5a0a",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "public": false,
+        "options": {
+          "responseMode": "lastNode"
+        }
+      }
+    },
+    {
+      "id": "e23b0133-fcb7-5573-a8d8-ec0662fdcb70",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "promptType": "auto",
+        "options": {
+          "systemMessage": "Bạn là trợ lý điều phối của TH AI.Agent. Trả lời bằng ngôn ngữ người dùng. Giao nghiên cứu cho Research Agent và thao tác bảng tính cho Sheet Agent. Chỉ ghi Google Sheets khi người dùng yêu cầu rõ ràng. Không tự gửi email, đăng bài hoặc kích hoạt workflow. Không khẳng định đã dùng công cụ nếu chưa có kết quả. Hỏi lại khi thiếu bảng tính hoặc trường dữ liệu.",
+          "maxIterations": 5
+        }
+      }
+    },
+    {
+      "id": "08073199-b9a3-5ddb-8471-dc6476a248ac",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        170,
+        230
+      ],
+      "parameters": {
+        "options": {
+          "temperature": 0.2
+        }
+      }
+    },
+    {
+      "id": "1641c74b-e30a-54ec-97a5-9507171a4744",
+      "name": "Google Gemini Research Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        130,
+        640
+      ],
+      "parameters": {
+        "options": {
+          "temperature": 0.2
+        }
+      }
+    },
+    {
+      "id": "329f7d32-64d3-55d3-9c94-29b7c347b035",
+      "name": "Google Gemini Sheet Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        730,
+        640
+      ],
+      "parameters": {
+        "options": {
+          "temperature": 0.2
+        }
+      }
+    },
+    {
+      "id": "8f942d7a-5af4-5a3d-aafa-28f28b8a7529",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        370,
+        230
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ 'main:' + $('When chat message received').first().json.sessionId }}",
+        "tableName": "th_agent_chat_memory",
+        "contextWindowLength": 5
+      }
+    },
+    {
+      "id": "5f15f58c-8b2f-565b-8946-1dd5aa2438d2",
+      "name": "Research Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        330,
+        640
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ 'research:' + $('When chat message received').first().json.sessionId }}",
+        "tableName": "th_agent_chat_memory",
+        "contextWindowLength": 5
+      }
+    },
+    {
+      "id": "6936d3e4-1901-5aad-b210-74a2cd168fc3",
+      "name": "Sheet Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        930,
+        640
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ 'sheet:' + $('When chat message received').first().json.sessionId }}",
+        "tableName": "th_agent_chat_memory",
+        "contextWindowLength": 5
+      }
+    },
+    {
+      "id": "60a48a8e-b66f-5272-b8fc-852161f8bb0d",
+      "name": "Think",
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        1000,
+        200
+      ],
+      "parameters": {
+        "description": "Use this tool to organize a short plan before choosing tools. It does not fetch information or write data."
+      }
+    },
+    {
+      "id": "a57c96bd-f609-5516-874a-b202a410912f",
+      "name": "Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 3,
+      "position": [
+        300,
+        400
+      ],
+      "parameters": {
+        "toolDescription": "Research a topic using Perplexity, verify sources, and return a concise answer with URLs. This tool never writes to Sheets.",
+        "text": "={{ $fromAI('research_request', 'Research question and requirements', 'string') }}",
+        "options": {
+          "systemMessage": "Bạn là Research Agent. Dùng Perplexity cho dữ liệu mới. Nêu nguồn và phân biệt thông tin đã xác minh với giả định. Không tự thực hiện thao tác ghi dữ liệu.",
+          "maxIterations": 3
+        }
+      }
+    },
+    {
+      "id": "cb335a75-4640-5706-8719-2a4f7cf507e6",
+      "name": "Sheet Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 3,
+      "position": [
+        900,
+        400
+      ],
+      "parameters": {
+        "toolDescription": "Append the data explicitly requested by the user to the configured Google Sheet. Ask for missing fields. Never append speculative results or write without a user request.",
+        "text": "={{ $fromAI('sheet_request', 'Explicitly requested rows to append, including task, result and source', 'string') }}",
+        "options": {
+          "systemMessage": "Bạn là Sheet Agent. Chỉ dùng Append khi người dùng đã yêu cầu ghi dữ liệu rõ ràng. Hãy kiểm tra Task, Result, Source; không bịa nguồn. Trả lại kết quả công cụ để người dùng biết đã ghi hay chưa.",
+          "maxIterations": 3
+        }
+      }
+    },
+    {
+      "id": "37be7520-f325-5446-9007-566ad55a5be4",
+      "name": "Perplexity",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        540,
+        640
+      ],
+      "parameters": {
+        "toolDescription": "Search and synthesize current information with Perplexity Sonar. Return the answer and citations.",
+        "method": "POST",
+        "url": "https://api.perplexity.ai/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'sonar', messages: [{ role: 'user', content: $fromAI('query', 'Research question to send to Perplexity', 'string') }] } }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "093564b2-0d9c-55de-bff6-0e6281900f6e",
+      "name": "Append",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        1150,
+        640
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Task": "={{ $fromAI('Task', 'Task or subject explicitly requested by the user', 'string') }}",
+            "Result": "={{ $fromAI('Result', 'Verified result to save', 'string') }}",
+            "Source": "={{ $fromAI('Source', 'Source URL or a blank string if not applicable', 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "38daa3d0-e3c7-5dbc-b07c-f0d7706ea2bb",
+      "name": "Start here",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -340
+      ],
+      "parameters": {
+        "width": 1360,
+        "height": 220,
+        "color": 5,
+        "content": "## TH AI.Agent · Multi-agent workspace\n1. Connect your Google Gemini credential to all three model nodes and choose an available current model.\n2. Memory is connected automatically to private PostgreSQL and survives restarts.\n3. Perplexity: create Header Auth with Name `Authorization`, Value `Bearer YOUR_KEY`.\n4. Append: connect Google Sheets OAuth, choose spreadsheet + sheet with columns Task, Result, Source.\n5. Open chat to test. Keep Inactive until credentials are configured. No AI request or Sheet write is performed by installation."
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Research Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Sheet Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sheet Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Sheet Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity": {
+      "ai_tool": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append": {
+      "ai_tool": [
+        [
+          {
+            "node": "Sheet Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 180
+  },
+  "pinData": {},
+  "tags": []
+}

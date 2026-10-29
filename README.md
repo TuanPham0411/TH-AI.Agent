@@ -1,3 +1,7 @@
+# TH AI.Agent — n8n workspace
+
+The active deployment is the n8n multi-agent workspace at https://ai.th.io.vn. Read [setup, credentials and recovery](n8n/README.md). The former Prompt Studio remains in this repository and its existing database is preserved; its workflows are now manual and cannot overwrite an active n8n deployment.
+
 # TH AI Agent
 
 Independent basic AI Agent workspace at https://ai.th.io.vn. Repository: https://github.com/TuanPham0411/TH-AI.Agent. This application has its own frontend/API, database, files, Docker images and release workflow. It does not depend on Portfolio/MES source, accounts or cookies.

@@ -1,0 +1,74 @@
+services:
+  n8n:
+    image: ${N8N_IMAGE:?Tested n8n image required}
+    restart: unless-stopped
+    stop_grace_period: 200s
+    mem_limit: 640m
+    memswap_limit: 1280m
+    cpus: 1.5
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file: .env
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: ai-agent-db-1
+      DB_POSTGRESDB_PORT: '5432'
+      DB_POSTGRESDB_DATABASE: th_n8n
+      DB_POSTGRESDB_USER: th_n8n
+      DB_POSTGRESDB_POOL_SIZE: '2'
+      DB_POSTGRESDB_CONNECTION_TIMEOUT: '60000'
+      N8N_HOST: ai.th.io.vn
+      N8N_PORT: '5678'
+      N8N_PROTOCOL: https
+      N8N_EDITOR_BASE_URL: https://ai.th.io.vn/
+      WEBHOOK_URL: https://ai.th.io.vn/
+      N8N_PROXY_HOPS: '2'
+      N8N_SECURE_COOKIE: 'true'
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: 'true'
+      N8N_DIAGNOSTICS_ENABLED: 'false'
+      N8N_PERSONALIZATION_ENABLED: 'false'
+      N8N_CONCURRENCY_PRODUCTION_LIMIT: '1'
+      N8N_DEFAULT_BINARY_DATA_MODE: database
+      N8N_BINARY_DATA_DATABASE_MAX_FILE_SIZE: '10'
+      N8N_PAYLOAD_SIZE_MAX: '10'
+      N8N_RUNNERS_MAX_CONCURRENCY: '1'
+      N8N_RUNNERS_MAX_OLD_SPACE_SIZE: '96'
+      N8N_RUNNERS_TASK_ACCEPT_TIMEOUT: '10'
+      N8N_GRACEFUL_SHUTDOWN_TIMEOUT: '180'
+      EXECUTIONS_TIMEOUT: '180'
+      EXECUTIONS_TIMEOUT_MAX: '300'
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_PRUNE: 'true'
+      EXECUTIONS_DATA_MAX_AGE: '168'
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: '1000'
+      NODE_OPTIONS: --max-old-space-size=384
+      GENERIC_TIMEZONE: Asia/Ho_Chi_Minh
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - data:/home/node/.n8n
+    networks: [ai]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5678/healthz/readiness').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 180s
+  gateway:
+    image: ${GATEWAY_IMAGE:?Tested gateway image required}
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=16m,mode=1777]
+    ports: ['127.0.0.1:${PUBLIC_PORT:-8083}:8080']
+    networks: [ai]
+    depends_on: [n8n]
+networks:
+  ai:
+    external: true
+    name: ai-agent_default
+volumes:
+  data:
+    name: th-n8n_data

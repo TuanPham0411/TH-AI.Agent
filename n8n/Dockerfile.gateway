@@ -1,0 +1,5 @@
+FROM nginx:stable-alpine
+COPY n8n/gateway.conf /etc/nginx/nginx.conf
+USER 101:101
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]

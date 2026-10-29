@@ -1,0 +1,101 @@
+name: Build and deploy n8n workspace
+on:
+  push:
+    branches: [main]
+    paths: ['n8n/**', '.github/workflows/n8n.yml']
+  pull_request:
+    paths: ['n8n/**', '.github/workflows/n8n.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: n8n-production
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - run: python3 -m unittest discover -s n8n -p 'test_*.py' -v
+      - name: Test actual n8n runtime and import the multi-agent workflow
+        run: |
+          set -euo pipefail
+          docker build -t th-ai-n8n-gateway-ci -f n8n/Dockerfile.gateway .
+          docker network create ai-agent_default
+          docker run -d --name ai-agent-db-1 --network ai-agent_default -e POSTGRES_PASSWORD=ci-only postgres:17-bookworm
+          for attempt in $(seq 1 40); do docker exec ai-agent-db-1 pg_isready -U postgres && break || sleep 2; done
+          docker exec ai-agent-db-1 psql -U postgres -c 'CREATE DATABASE th_n8n;'
+          printf '%s\n' 'N8N_IMAGE=docker.n8n.io/n8nio/n8n:2.45.6' 'GATEWAY_IMAGE=th-ai-n8n-gateway-ci' 'PUBLIC_PORT=8083' 'DB_POSTGRESDB_PASSWORD=ci-only' 'N8N_ENCRYPTION_KEY=ci-test-only-encryption-key-123456789' > n8n/.env
+          # The CI database uses postgres; production uses a separate restricted role.
+          sed -i 's/DB_POSTGRESDB_USER: th_n8n/DB_POSTGRESDB_USER: postgres/' n8n/compose.yaml
+          docker compose -p th-n8n --env-file n8n/.env -f n8n/compose.yaml up -d
+          for attempt in $(seq 1 100); do
+            if curl --fail --silent http://127.0.0.1:8083/api/ready | python3 -c 'import json,sys;assert json.load(sys.stdin)["status"]=="ready"'; then break; fi
+            sleep 3
+          done
+          python3 n8n/smoke.py
+          docker compose -p th-n8n --env-file n8n/.env -f n8n/compose.yaml down -v
+      - name: Runtime diagnostics on failure
+        if: failure()
+        run: docker compose -p th-n8n --env-file n8n/.env -f n8n/compose.yaml logs --tail=60
+  image:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions: {contents: read, packages: write}
+    strategy:
+      matrix: {target: [runtime, gateway]}
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: n8n/Dockerfile.${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/tuanpham0411/th-ai-n8n-${{ matrix.target }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/TuanPham0411/TH-AI.Agent
+  deploy:
+    needs: image
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 50
+    permissions: {contents: read, packages: read}
+    env:
+      DOCKER_CONFIG: /tmp/th-n8n-registry-${{ github.run_id }}
+    steps:
+      - name: Verify AI runner
+        env: {SELECTED_RUNNER: '${{ runner.name }}'}
+        run: test "$SELECTED_RUNNER" = th-ai.agent
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy with the TH-Server management implementation
+        env:
+          RELEASE_SHA: '${{ github.sha }}'
+        run: |
+          set -euo pipefail
+          platform_sha=c18b913127a6e1cd186421104777a6ed6d72f516
+          source_dir="$(mktemp -d "$RUNNER_TEMP/th-n8n-management.XXXXXX")"
+          trap 'rm -rf "$source_dir"' EXIT
+          for file in deploy.py host.py backup.py drive.mjs codec.mjs; do
+            curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-RPI.Server/$platform_sha/n8n/$file" -o "$source_dir/$file"
+          done
+          python3 "$source_dir/deploy.py" --release "$RELEASE_SHA" --platform-release "$platform_sha" --source "$GITHUB_WORKSPACE/n8n"
+      - name: Verify public n8n route
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 30 https://ai.th.io.vn/api/ready
+          curl --fail --silent --show-error --retry 3 --max-time 30 https://ai.th.io.vn/ | python3 -c 'import sys;assert "n8n" in sys.stdin.read().lower()'
