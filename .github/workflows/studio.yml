@@ -1,0 +1,134 @@
+name: Build and deploy independent Agent Studio
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'server/**', 'tests/**', 'deploy/**', 'Dockerfile', 'compose.yaml', 'storage.compose.yaml', 'package*.json', '.github/workflows/studio.yml']
+  pull_request:
+    paths: ['site/**', 'server/**', 'tests/**', 'deploy/**', 'Dockerfile', 'compose.yaml', 'storage.compose.yaml', 'package*.json', '.github/workflows/studio.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: independent-studio-production, cancel-in-progress: false}
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env: {POSTGRES_PASSWORD: ci-only, POSTGRES_DB: app_test}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v5
+        with: {node-version: '22', cache: npm}
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration
+        env: {TEST_DATABASE_URL: 'postgresql://postgres:ci-only@127.0.0.1:5432/app_test'}
+      - name: Test the real editor and isolated browser Function worker
+        env: {CHROMIUM_PATH: /usr/bin/google-chrome}
+        run: node tests/editor.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: studio-browser-preview, path: artifacts/}
+  image:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions: {contents: read, packages: write}
+    strategy:
+      matrix: {target: [api, web]}
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: '${{ github.actor }}'
+          password: '${{ secrets.GITHUB_TOKEN }}'
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: '${{ matrix.target }}'
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/tuanpham0411/th-ai-agent-${{ matrix.target }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/TuanPham0411/TH-AI.Agent
+          cache-from: type=gha,scope=th-ai-agent-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=th-ai-agent-${{ matrix.target }}
+  deploy:
+    needs: image
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 35
+    permissions: {contents: read, packages: read}
+    env:
+      RELEASE_SHA: '${{ github.sha }}'
+      DOCKER_CONFIG: /tmp/th-studio-registry-${{ github.run_id }}
+    steps:
+      - name: Deploy through TH-Server management
+        env:
+          REGISTRY_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          REGISTRY_USER: '${{ github.actor }}'
+        run: |
+          set -euo pipefail
+          test '${{ runner.name }}' = th-ai.agent
+          test ! -f ~/th-platform/state/n8n-deployment.json
+          umask 077
+          source_dir="$(mktemp -d "$RUNNER_TEMP/th-studio-release.XXXXXX")"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$source_dir" "$DOCKER_CONFIG"' EXIT
+          for attempt in 1 2 3; do
+            if printf '%s' "$REGISTRY_TOKEN" | timeout 60s docker login ghcr.io --username "$REGISTRY_USER" --password-stdin; then break; fi
+            test "$attempt" != 3
+            sleep 5
+          done
+          unset REGISTRY_TOKEN
+          platform_sha=0bf6f1f4a59b2a141dc23458b61b59a8e8155641
+          for file in compose.yaml storage.compose.yaml database-init.sh; do
+            curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-AI.Agent/$RELEASE_SHA/$file" -o "$source_dir/$file"
+          done
+          for file in supervisor.py install.py bootstrap_google.py; do
+            curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-RPI.Server/$platform_sha/automation/$file" -o "$source_dir/$file"
+          done
+          python3 "$source_dir/install.py" "$platform_sha"
+          curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-RPI.Server/$platform_sha/deploy/application.py" -o "$source_dir/application.py"
+          python3 -u "$source_dir/application.py" --application ai-agent --image-tag "$RELEASE_SHA" --source "$source_dir"
+          python3 "$source_dir/bootstrap_google.py"
+      - name: Verify public routes and the real Function runtime
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 https://ai.th.io.vn/api/ready
+          curl --fail --silent --show-error --max-time 30 https://th.io.vn/api/health
+          curl --fail --silent --show-error --max-time 30 https://ticket.th.io.vn/api/health
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 15 https://ai.th.io.vn/api/internal/timers/tick)" = 404
+          systemctl is-active th-automation.service
+          timeout 45s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
+          import http from 'node:http';
+          import assert from 'node:assert/strict';
+          const body=JSON.stringify({code:'return {value:input.value*2};',input:{value:21}});
+          const result=await new Promise((resolve,reject)=>{const req=http.request({socketPath:'/run/th-storage/automation.sock',path:'/function',method:'POST',headers:{Authorization:'Bearer '+process.env.TH_STORAGE_TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)},timeout:20000},res=>{let text='';res.on('data',c=>text+=c);res.on('end',()=>{try{if(res.statusCode!==200)throw Error('Function runtime failed: '+text);resolve(JSON.parse(text));}catch(e){reject(e);}});});req.on('error',reject);req.on('timeout',()=>req.destroy());req.end(body);});
+          assert.equal(result.output.value,42);
+          console.log(JSON.stringify({functionRuntimeVerified:true,isolatedExecution:true}));
+          JS
+  public-editor:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v5
+        with: {node-version: '22'}
+      - name: Test the live public editor without owner credentials
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          LIVE_STUDIO_URL: https://ai.th.io.vn/
+        run: node tests/editor.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: deployed-studio-preview, path: artifacts/}

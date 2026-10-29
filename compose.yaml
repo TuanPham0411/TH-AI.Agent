@@ -29,6 +29,7 @@ services:
     environment:
       DATABASE_URL: postgresql://th_ai_api:${TH_AI_DB_PASSWORD}@db:5432/th_ai
     volumes: ["ai-files:/var/lib/th-ai/files"]
+    ports: ["127.0.0.1:3100:3100"]
     mem_limit: 224m
     cpus: 0.5
     restart: unless-stopped
@@ -48,3 +49,4 @@ services:
 volumes:
   ai-db:
   ai-files:
+

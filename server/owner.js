@@ -1,19 +1,22 @@
 import express from 'express';
+import {studioRoutes} from './studio.js';
 import {randomBytes,createHash} from 'node:crypto';
 import {brokerRequest} from './th-storage/client.mjs';
 const origin='https://ai.th.io.vn';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const cookie=(req,name)=>{const value=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='));return value?value.slice(name.length+1):'';};
-export function ownerRoutes({pool,request=bodyRequest}={}){
+export function ownerRoutes({pool,request=bodyRequest,studio=studioRoutes({pool})}={}){
  const router=express.Router();router.use(express.json({limit:'512kb'}));
  const run=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  const session=req=>request('/v1/auth/session',{session:cookie(req,'__Host-th-ai')});
  router.get('/auth/session',run(async(req,res)=>res.json(await session(req))));
  router.get('/oauth/start',run(async(req,res)=>{const nonce=randomBytes(32).toString('hex');const value=await request('/v1/auth/start',{binding:hash(nonce)});res.cookie('__Host-th-ai-state',nonce,{secure:true,httpOnly:true,sameSite:'lax',path:'/',maxAge:600000});res.redirect(value.url);}));
- router.get('/oauth/callback',run(async(req,res)=>{const nonce=cookie(req,'__Host-th-ai-state');if(!/^[a-f0-9]{64}$/.test(nonce))return res.status(400).json({error:'Sign-in state expired; start again'});const value=await request('/v1/auth/callback',{state:req.query.state,code:req.query.code,binding:hash(nonce)});res.clearCookie('__Host-th-ai-state',{secure:true,httpOnly:true,sameSite:'lax',path:'/'});res.cookie('__Host-th-ai',value.session,{secure:true,httpOnly:true,sameSite:'lax',path:'/',maxAge:Math.max(0,value.expires-Date.now())});res.redirect('/#studio');}));
+ router.get('/oauth/callback',(req,res,next)=>{if(!String(req.query.state||'').startsWith('thsheet_'))return next();session(req).then(owner=>{if(!owner.authenticated)return res.status(401).send('Đăng nhập owner trước khi kết nối Google Sheets.');req.owner=owner;return studio.oauthCallback(req,res);}).catch(next);});
+ router.get('/oauth/callback',run(async(req,res)=>{const nonce=cookie(req,'__Host-th-ai-state');if(!/^[a-f0-9]{64}$/.test(nonce))return res.status(400).json({error:'Sign-in state expired; start again'});const value=await request('/v1/auth/callback',{state:req.query.state,code:req.query.code,binding:hash(nonce)});res.clearCookie('__Host-th-ai-state',{secure:true,httpOnly:true,sameSite:'lax',path:'/'});res.cookie('__Host-th-ai',value.session,{secure:true,httpOnly:true,sameSite:'lax',path:'/',maxAge:Math.max(0,value.expires-Date.now())});res.redirect('/');}));
  router.use((req,res,next)=>{if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&req.headers.origin!==origin)return res.status(403).json({error:'Same-origin request required'});next();});
  router.post('/auth/logout',run(async(req,res)=>{await request('/v1/auth/logout',{session:cookie(req,'__Host-th-ai')});res.clearCookie('__Host-th-ai',{secure:true,httpOnly:true,sameSite:'lax',path:'/'});res.json({authenticated:false});}));
  router.use((req,res,next)=>{session(req).then(owner=>{if(!owner.authenticated)return res.status(401).json({error:'Owner sign-in required'});req.owner=owner;next();}).catch(next);});
+ router.use(studio.router);
  router.get('/drafts',run(async(req,res)=>{const {rows}=await pool.query('SELECT id,title,revision,updated_at FROM ai_drafts ORDER BY updated_at DESC LIMIT 200');res.json({drafts:rows});}));
  router.get('/drafts/:id',run(async(req,res)=>{if(!uuid(req.params.id))return res.status(400).json({error:'Invalid draft'});const {rows}=await pool.query('SELECT * FROM ai_drafts WHERE id=$1',[req.params.id]);if(!rows.length)return res.status(404).json({error:'Draft not found'});res.json(rows[0]);}));
  router.put('/drafts/:id',run(async(req,res)=>{
