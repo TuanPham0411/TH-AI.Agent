@@ -88,7 +88,7 @@ jobs:
             sleep 5
           done
           unset REGISTRY_TOKEN
-          platform_sha=0bf6f1f4a59b2a141dc23458b61b59a8e8155641
+          platform_sha=d231bd36571e46789bb58b04d63178b79f209fb1
           for file in compose.yaml storage.compose.yaml database-init.sh; do
             curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-AI.Agent/$RELEASE_SHA/$file" -o "$source_dir/$file"
           done
