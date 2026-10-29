@@ -1,8 +1,5 @@
-name: Build, test and package
+name: Build legacy AI foundation manually
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read

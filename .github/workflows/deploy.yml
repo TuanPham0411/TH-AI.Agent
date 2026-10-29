@@ -1,9 +1,5 @@
 name: Deploy managed application
 on:
-  workflow_run:
-    workflows: ['Build, test and package']
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 permissions: {contents: read, packages: read}
 concurrency:
@@ -11,17 +7,15 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository &&
-       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'))
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux, ARM64]
     timeout-minutes: 30
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       DOCKER_CONFIG: /tmp/th-managed-registry-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Protect active n8n deployment
+        run: test ! -f ~/th-platform/state/n8n-deployment.json
       - name: Deploy immutable images with the TH-Server implementation
         env:
           SELECTED_RUNNER: '${{ runner.name }}'
