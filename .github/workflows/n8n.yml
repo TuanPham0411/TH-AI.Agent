@@ -88,7 +88,7 @@ jobs:
           RELEASE_SHA: '${{ github.sha }}'
         run: |
           set -euo pipefail
-          platform_sha=c18b913127a6e1cd186421104777a6ed6d72f516
+          platform_sha=2cd0c284775c01c7bf3d07655d1b13e1e5e74188
           source_dir="$(mktemp -d "$RUNNER_TEMP/th-n8n-management.XXXXXX")"
           trap 'rm -rf "$source_dir"' EXIT
           for file in deploy.py host.py backup.py drive.mjs codec.mjs; do

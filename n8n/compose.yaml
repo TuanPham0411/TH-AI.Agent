@@ -61,7 +61,7 @@ services:
     mem_limit: 32m
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    tmpfs: [/tmp:size=16m,mode=1777]
+    tmpfs: ['/tmp:size=16m,mode=1777']
     ports: ['127.0.0.1:${PUBLIC_PORT:-8083}:8080']
     networks: [ai]
     depends_on: [n8n]
