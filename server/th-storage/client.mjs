@@ -128,5 +128,5 @@ export function managedPool(pool,application,env=process.env){
   },
   commit:value=>brokerRequest(config,'/v1/commit',value)
  });
- mediaCache={config,pool};return wrapped;
+ mediaCache={config,pool:wrapped};return wrapped;
 }

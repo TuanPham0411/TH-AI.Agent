@@ -46,3 +46,18 @@ Add-ins are declarative API connectors, not arbitrary packages installed into th
 The block appears in the Add-ins category and can be used as a flow step or an agent tool. Configure its token separately. Supported authentication is `none`, `bearer` or `apiKey` (`X-API-Key`). HTTPS destinations are pinned to the approved origin; private/special DNS addresses and redirects are rejected. API writes use `POST`, require approval, and are not retried. Required permissions and API availability depend on the platform. Installing a connector does not claim that a Facebook, shopping or other account is already authorized.
 
 More specialized nodes can be implemented in `site/workflow-model.js`, `server/workflow-engine.js` and `server/studio-providers.js`, with explicit fields, ports, validation and provider tests. Keep shared operational mechanisms in TH-RPI.Server.
+
+
+## English single-user experience (October 2026)
+
+This release focuses on the user workspace. Google owner login remains available. Firebase accounts, multi-user isolation and administration are deferred; there is no public multi-user execution. Anonymous visitors can design, import/export, explicitly save a browser-only draft and run local JSON/Function/statistics/report previews. Browser drafts are not cloud backups.
+
+The catalog includes Google Workspace, Microsoft Graph, GitHub, Slack, Jira, Discord, Meta, TikTok, Shopify, WooCommerce, Stripe, Shopee, TikTok Shop and Resend. Presets use fixed API paths, editable fields and typed input mappings. Each connector includes credential setup steps, official documentation, account/approval requirements and pricing notices. A preset is not evidence of a connected account. Provider app review, regional access, API changes and permissions may affect availability. API keys are user-supplied; no paid calls are made to test generic account access.
+
+Google authorization requests selected service scopes incrementally and uses the existing authorized callback. Microsoft uses a registered public-client application and device-code flow; enable public client flows and obtain organizational consent when required. Secrets are never returned to the browser. Blank secret fields preserve existing provider secrets. Changing an origin requires a replacement token.
+
+Nineteen organizational roles define scope, deliverables and allowed tool capabilities. The server validates role grants before calling the model or tool; a prompt cannot grant additional capabilities. Publishing tools require a Publisher role and per-run write approval. Role permissions can be narrowed in workflow JSON but cannot exceed the selected role.
+
+AI queries and media jobs require explicit potential-charge approval. Scheduled paid work needs a separate saved permission. Content and Script agents produce drafts; they do not silently publish. Replicate image/video jobs record submission intent before the paid request and return an asynchronous job reference. Refresh Media jobs for provider status. A failed submission acknowledgement is marked uncertain and is never automatically retried. Completed outputs may be explicitly archived to Drive-first storage (64 MB per file, up to eight outputs per job); download larger outputs from the provider. Media URLs can expire. Archives are acknowledged only after the storage commit succeeds.
+
+The Pi 3 remains a single-worker coordinator. Cloud services perform AI and video processing. For sustained multi-user execution, use a separate host with at least 8 GB RAM, four cores and SSD storage; local video generation additionally needs suitable GPU hardware. A second 1 GB Pi does not remove these limits.

@@ -6,3 +6,4 @@ test('unconfigured database does not claim readiness',async t=>{const get=await 
 test('database failure is sanitized',async t=>{const get=await request(t,{checkDatabase:()=>{throw Error('private connection string');}});const r=await get('/api/ready');assert.equal(r.status,503);assert.equal((await r.json()).database,'unavailable');});
 test('configured database can become ready',async t=>{let calls=0;const get=await request(t,{checkDatabase:async()=>{calls++;}});assert.equal((await get('/api/ready')).status,200);assert.equal(calls,1);});
 test('foundation exposes no mutation endpoint or MES session',async t=>{const get=await request(t,{production:true});const r=await get('/api/tasks',{method:'POST',headers:{Cookie:'th_mes=anything'}});assert.equal(r.status,405);assert.equal(r.headers.get('set-cookie'),null);});
+
