@@ -73,28 +73,30 @@ jobs:
     env:
       DOCKER_CONFIG: /tmp/th-n8n-registry-${{ github.run_id }}
     steps:
-      - name: Verify AI runner
-        env: {SELECTED_RUNNER: '${{ runner.name }}'}
-        run: test "$SELECTED_RUNNER" = th-ai.agent
-      - uses: actions/checkout@v5
-        with: {persist-credentials: false}
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy with the TH-Server management implementation
+      - name: Deploy through native TH-Server management
         env:
           RELEASE_SHA: '${{ github.sha }}'
+          REGISTRY_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          REGISTRY_USER: '${{ github.actor }}'
+          SELECTED_RUNNER: '${{ runner.name }}'
         run: |
           set -euo pipefail
-          platform_sha=2cd0c284775c01c7bf3d07655d1b13e1e5e74188
+          test "$SELECTED_RUNNER" = th-ai.agent
+          platform_sha=9b2d7f249ba495d573f3036e9061d6e92668aa62
           source_dir="$(mktemp -d "$RUNNER_TEMP/th-n8n-management.XXXXXX")"
-          trap 'rm -rf "$source_dir"' EXIT
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$source_dir" "$DOCKER_CONFIG"' EXIT
+          mkdir "$source_dir/app"
+          if ! docker image inspect "ghcr.io/tuanpham0411/th-ai-n8n-runtime:$RELEASE_SHA" "ghcr.io/tuanpham0411/th-ai-n8n-gateway:$RELEASE_SHA" >/dev/null 2>&1; then
+            printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          fi
+          unset REGISTRY_TOKEN
           for file in deploy.py host.py backup.py drive.mjs codec.mjs; do
             curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-RPI.Server/$platform_sha/n8n/$file" -o "$source_dir/$file"
           done
-          python3 "$source_dir/deploy.py" --release "$RELEASE_SHA" --platform-release "$platform_sha" --source "$GITHUB_WORKSPACE/n8n"
+          for file in compose.yaml workflow.json; do
+            curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-AI.Agent/$RELEASE_SHA/n8n/$file" -o "$source_dir/app/$file"
+          done
+          python3 -u "$source_dir/deploy.py" --release "$RELEASE_SHA" --platform-release "$platform_sha" --source "$source_dir/app"
       - name: Verify public n8n route
         run: |
           curl --fail --silent --show-error --retry 3 --max-time 30 https://ai.th.io.vn/api/ready
