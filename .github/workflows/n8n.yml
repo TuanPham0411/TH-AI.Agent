@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$SELECTED_RUNNER" = th-ai.agent
-          platform_sha=9b2d7f249ba495d573f3036e9061d6e92668aa62
+          platform_sha=5235175aa4e2e2180b68401f42ea9370cd057d12
           source_dir="$(mktemp -d "$RUNNER_TEMP/th-n8n-management.XXXXXX")"
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$source_dir" "$DOCKER_CONFIG"' EXIT
           mkdir "$source_dir/app"
