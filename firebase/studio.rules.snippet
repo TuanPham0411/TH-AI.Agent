@@ -1,0 +1,5 @@
+// Merge into existing Firestore rules; do not overwrite other applications.
+// Remove any broader allow rules that would also grant access here.
+match /agentStudioUsers/{document=**} {
+  allow read, write: if false;
+}

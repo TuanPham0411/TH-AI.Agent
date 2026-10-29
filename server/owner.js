@@ -1,4 +1,5 @@
 import express from 'express';
+import {administrationRoutes} from './administration.js';
 import {studioRoutes} from './studio.js';
 import {randomBytes,createHash} from 'node:crypto';
 import {brokerRequest} from './th-storage/client.mjs';
@@ -9,6 +10,7 @@ export function ownerRoutes({pool,request=bodyRequest,studio=studioRoutes({pool}
  const router=express.Router();router.use(express.json({limit:'512kb'}));
  const run=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  const session=req=>request('/v1/auth/session',{session:cookie(req,'__Host-th-ai')});
+ router.use(administrationRoutes({pool,session}));
  router.get('/auth/session',run(async(req,res)=>res.json(await session(req))));
  router.get('/oauth/start',run(async(req,res)=>{const nonce=randomBytes(32).toString('hex');const value=await request('/v1/auth/start',{binding:hash(nonce)});res.cookie('__Host-th-ai-state',nonce,{secure:true,httpOnly:true,sameSite:'lax',path:'/',maxAge:600000});res.redirect(value.url);}));
  router.get('/oauth/callback',(req,res,next)=>{if(!String(req.query.state||'').startsWith('thsheet_'))return next();session(req).then(owner=>{if(!owner.authenticated)return res.status(401).send('Sign in before connecting Google Sheets.');req.owner=owner;return studio.oauthCallback(req,res);}).catch(next);});

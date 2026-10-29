@@ -70,3 +70,9 @@ Toolbox groups start collapsed. Expand a group or search to find blocks. Clickin
 Pin keeps the properties panel open. Unpin makes it hide when the canvas selection is cleared. Drag the toolbox's right edge, properties panel's left edge, or terminal's upper edge to resize. Separator handles also accept arrow keys; double-click resets that region. Reset panel sizes restores the defaults. Dimensions and pin preference are stored in the current browser. Function editors and data views can be resized vertically.
 
 Your workflows provides Delete, including that workflow's execution history and schedule. Run history offers individual Delete and Clear history. Media jobs provides Delete job; it removes the Studio record, does not cancel the external provider job and retains archived files. Each destructive action requires a UI confirmation. Active workflows cannot be removed while their run is executing. Deletions use a single acknowledged storage transaction; failure rolls back rather than reporting success. Drive recovery events remain available and are not permanently purged by these controls.
+
+## Owner administration and Firebase members
+
+Use the verified owner account, then Your account → Open Owner Console. See [Owner Console setup and boundaries](OWNER-CONSOLE.md) for Firebase configuration, private service-account upload, connection probes, approval/blocking, member roles and storage isolation. New registrations start Closed. Members can save their own Firestore workflow drafts and run local previews; server execution and owner credentials are not shared. Commercial plan labels do not charge users.
+
+See [Automation readiness assessment](AUTOMATION-ASSESSMENT.md) for the comparison with mature automation platforms, prioritized development work and hardware recommendations.
