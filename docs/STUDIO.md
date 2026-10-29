@@ -4,7 +4,7 @@ An independent workflow studio, without n8n. The canvas, node registry, graph va
 
 ## Editing and execution
 
-Drag blocks from the library or click to add, move their headers, and click compatible ports to connect. Flow ports execute a directed acyclic process. Model, memory and tool ports supply dependencies to agents. The inspector provides configuration, connections, actual input/output and operator notes. Undo/redo, JSON import/export, fit, pan, zoom and a minimap are available. Active edges and nodes animate only while the corresponding recorded execution is running. Reduced-motion preferences are respected.
+Click a library block to preview it. Drag it onto the canvas or choose Create block to add it, move its header, and click compatible ports to connect. Flow ports execute a directed acyclic process. Model, memory and tool ports supply dependencies to agents. The inspector provides configuration, connections, actual input/output and operator notes. Undo/redo, JSON import/export, fit, pan, zoom and a minimap are available. Active edges and nodes animate only while the corresponding recorded execution is running. Reduced-motion preferences are respected.
 
 The owner signs in using the existing Google owner login. Save a workflow before running it. Conflicting revisions are rejected. Each run and each step is acknowledged by the shared Drive-first storage layer before external processing continues. Results and traces are private. Long trace values are explicitly marked as truncated previews; the final output remains available in the run record. One workflow runs at a time, with an overall 180-second deadline. Interrupted runs are not automatically replayed.
 
