@@ -1,0 +1,27 @@
+name: Observe private n8n installation
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/inspect-n8n-install.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect installation state without credentials
+        run: |
+          test "${{ runner.name }}" = th-ai.agent
+          free -h
+          docker ps --format '{{.Names}} {{.Status}}'
+          python3 - <<'PY'
+          import pathlib,json
+          home=pathlib.Path.home()/'th-platform'
+          for name in ['n8n-workflow.json','n8n-deployment.json','n8n-backup.json']:
+              p=home/'state'/name
+              if p.exists():
+                  d=json.loads(p.read_text()); print(name,json.dumps({k:d.get(k) for k in ['id','ready','version','workflowId','verified','restoreVerified']}))
+          print('ownerConfiguredLocally', (home/'config/n8n-owner-login.json').exists())
+          PY
+          curl --silent --max-time 10 --output /dev/null --write-out 'Private n8n %{http_code}\n' http://127.0.0.1:8083/api/ready || true
+          curl --silent --max-time 10 --output /dev/null --write-out 'Public AI %{http_code}\n' https://ai.th.io.vn/api/ready || true
