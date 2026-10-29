@@ -1,0 +1,19 @@
+name: Restore custom AI workspace
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/restore-custom-ai.yml]
+permissions: {contents: read}
+jobs:
+  restore:
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 20
+    steps:
+      - name: Stop n8n deployment and restore the private custom application
+        run: |
+          set -euo pipefail
+          test "${{ runner.name }}" = th-ai.agent
+          work_dir="$(mktemp -d "$RUNNER_TEMP/th-ai-restore.XXXXXX")"
+          trap 'rm -rf "$work_dir"' EXIT
+          curl --fail --silent --show-error --location --retry 3 --max-time 60 "https://raw.githubusercontent.com/TuanPham0411/TH-RPI.Server/aaa6b1c3c817305a9a502cc7d16c0e4d4ecb5c2a/n8n/retire.py" -o "$work_dir/retire.py"
+          python3 -u "$work_dir/retire.py"
