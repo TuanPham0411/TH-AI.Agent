@@ -76,3 +76,9 @@ Your workflows provides Delete, including that workflow's execution history and 
 Use the verified owner account, then Your account → Open Owner Console. See [Owner Console setup and boundaries](OWNER-CONSOLE.md) for Firebase configuration, private service-account upload, connection probes, approval/blocking, member roles and storage isolation. New registrations start Closed. Members can save their own Firestore workflow drafts and run local previews; server execution and owner credentials are not shared. Commercial plan labels do not charge users.
 
 See [Automation readiness assessment](AUTOMATION-ASSESSMENT.md) for the comparison with mature automation platforms, prioritized development work and hardware recommendations.
+
+## Check, live Memory and unattended Auto
+
+Use **Check workflow** to validate and save the complete configuration. Green marks distinguish verified saved connections from merely entered credentials; local marks mean static checks passed. Run reuses the checked configuration, saved credentials and bounded in-memory caches. Traces no longer require a Drive transaction at each step. See [Check, Memory and Auto](CHECK-MEMORY-AUTO.md) for checkpoint semantics, performance verification and limits.
+
+**Auto · TH-Server** lets the owner review a recurring goal, approved model/tool blocks and per-run/day limits. It continues without an open browser, using the `auto` conversation session. AI managers can decide among their approved tools and summarize pending work for later cycles. Deployment leaves Auto disabled; paid requests and external writes require explicit saved approval in that panel.
