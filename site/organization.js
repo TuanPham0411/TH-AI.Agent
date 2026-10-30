@@ -1,0 +1,46 @@
+// Organization topology is shared by the editor and authoritative runtime.
+export const organizationalTypes=['manager','leader','supervisor','reviewer'];
+export const agentTypes=['agent','delegate','content_agent','script_agent',...organizationalTypes];
+export const reviewTypes=['supervisor','reviewer'];
+export const isOrganization=graph=>graph.nodes.some(n=>n?.type==='manager');
+export const isTaskBlock=node=>!['chat','timer','auto_input','model','memory','note','output'].includes(node.type);
+export function portsFor(node,catalog){
+ const spec=catalog[node?.type];if(!spec)return {inputs:{},outputs:{}};
+ const inputs={...spec.inputs},outputs={...spec.outputs};
+ if(isTaskBlock(node)){
+  Object.assign(inputs,{user:'user',manager:'task'});inputs.in??='flow';Object.assign(outputs,{user:'result',report:'report',tool:'tool'});if(!Object.values(outputs).includes('flow'))outputs.out='flow';
+  if(agentTypes.includes(node.type)){inputs.model='model';inputs.memory='memory';inputs.tool='tool';outputs.tasks='task';}
+  if(reviewTypes.includes(node.type)){inputs.observe='report';outputs.assessment='assessment';delete inputs.in;delete inputs.user;delete inputs.tool;delete outputs.out;delete outputs.user;delete outputs.tasks;delete outputs.tool;delete outputs.report;}
+ }
+ if(node.type==='chat')outputs.user='user';if(node.type==='output')inputs.user='result';
+ if(node.type==='manager'){inputs.assessment='assessment';delete inputs.in;delete inputs.manager;delete outputs.out;delete outputs.tool;delete outputs.report;}
+ const hidden=Array.isArray(node.config?.disabledPorts)?node.config.disabledPorts.filter(k=>typeof k==='string'):[];for(const key of hidden){const [side,name]=key.split('.');if(side==='inputs')delete inputs[name];if(side==='outputs')delete outputs[name];}
+ return {inputs,outputs};
+}
+export function managementLinks(graph){const nodes=new Map(graph.nodes.map(n=>[n.id,n]));return graph.edges.filter(e=>nodes.get(e.source)?.enabled!==false&&nodes.get(e.target)?.enabled!==false&&(e.sourcePort==='tasks'&&e.targetPort==='manager'||e.sourcePort==='tool'&&e.targetPort==='tool')).map(e=>e.sourcePort==='tasks'?{parent:e.source,child:e.target,edge:e}:{parent:e.target,child:e.source,edge:e});}
+export function organizationIssues(graph,catalog){
+ const errors=[];for(const n of graph.nodes.filter(n=>n&&typeof n==='object')){const hidden=n.config?.disabledPorts;if(hidden!==undefined&&(!Array.isArray(hidden)||hidden.some(p=>typeof p!=='string'||!/^((inputs|outputs)\.[a-zA-Z0-9_]+)$/.test(p))))errors.push(n.name+': invalid disabled connection list.');}
+ if(graph.nodes.some(n=>!n||!catalog[n.type]||!n.config||typeof n.config!=='object'||Array.isArray(n.config)))return errors;if(!isOrganization(graph))return errors;
+ const settings=graph.settings?.organization||{};for(const [key,min,max]of [['maxModelCalls',2,40],['parallelTasks',1,4],['timeoutSeconds',60,600],['maxLeaderRevisions',0,3]])if(settings[key]!==undefined&&(!Number.isInteger(settings[key])||settings[key]<min||settings[key]>max))errors.push('Organization '+key+' must be between '+min+' and '+max+'.');
+ const nodes=new Map(graph.nodes.map(n=>[n.id,n])),managers=graph.nodes.filter(n=>n.type==='manager'&&n.enabled!==false),links=managementLinks(graph),parent=new Map();
+ if(managers.length!==1)errors.push('A factory workflow requires exactly one enabled Manager.');
+ for(const l of links){const p=nodes.get(l.parent),c=nodes.get(l.child);if(reviewTypes.includes(p.type))errors.push(p.name+': supervision assesses Leader reports and cannot manage operational staff.');if(!agentTypes.includes(p.type))errors.push(p.name+': only an agent can manage tasks.');if(!isTaskBlock(c)||c.type==='manager')errors.push(c.name+': this block cannot be a subordinate task.');if(parent.has(c.id)&&parent.get(c.id)!==p.id)errors.push(c.name+': assign only one direct manager.');parent.set(c.id,p.id);}
+ for(const node of graph.nodes.filter(n=>n.enabled!==false&&isTaskBlock(n))){if(reviewTypes.includes(node.type)&&nodes.get(parent.get(node.id))?.type!=='manager')errors.push(node.name+': Supervisors and Reviewers must report directly to Manager, at the same level as Team Leaders.');if(agentTypes.includes(node.type)&&links.filter(l=>l.parent===node.id).length>15)errors.push(node.name+': split more than 15 direct reports into additional departments.');const p=portsFor(node,catalog);if(node.type==='manager'&&(!p.inputs.user||!p.outputs.user))errors.push('Manager must keep its user input and user result channel.');if(node.type!=='manager'&&!parent.has(node.id)&&!p.inputs.user)errors.push(node.name+': connect a manager or enable direct user tasks.');let id=node.id,depth=0;const seen=new Set();while(parent.has(id)){if(++depth>8){errors.push('Management hierarchy must not exceed eight levels.');break;}if(seen.has(id)){errors.push('Management connections cannot form a cycle.');break;}seen.add(id);id=parent.get(id);}}
+ for(const e of graph.edges){const a=nodes.get(e.source),b=nodes.get(e.target);if(!a||!b)continue;const type=portsFor(a,catalog).outputs[e.sourcePort];if((a.type==='manager'||b.type==='manager')&&type==='flow')errors.push('Manager cannot receive or return Flow data.');if(type==='assessment'&&(!reviewTypes.includes(a.type)||b.type!=='manager'||parent.get(a.id)!==b.id))errors.push('An assessment must return from a Supervisor to its own Manager.');if(type==='report'&&(!reviewTypes.includes(b.type)||a.type!=='leader'||parent.get(a.id)!==parent.get(b.id)||nodes.get(parent.get(a.id))?.type!=='manager'))errors.push('Supervisors observe only reports from peer Team Leaders sent to their shared Manager.');}
+ return [...new Set(errors)];
+}
+export function upgradeOrganization(graph){
+ const next=structuredClone(graph),candidates=next.nodes.filter(n=>['agent','content_agent','script_agent'].includes(n.type));const root=candidates.find(n=>n.config.role==='manager')||candidates[0];if(!root)throw Error('Add an AI Agent before converting this workflow.');
+ root.type='manager';root.name='Manager';root.config.role='manager';
+ for(const n of next.nodes){if(n.type==='delegate'){n.type='leader';n.config.role=n.config.role==='operator'?'operator':'leader';}if(isTaskBlock(n))n.config.disabledPorts??=[];}
+ for(const e of next.edges){if(e.target===root.id&&e.targetPort==='in'){const source=next.nodes.find(n=>n.id===e.source);if(source?.type!=='chat')throw Error('Convert the Manager input to a direct user channel before upgrading this workflow.');e.sourcePort='user';e.targetPort='user';}if(e.source===root.id&&e.sourcePort==='out'){const target=next.nodes.find(n=>n.id===e.target);if(target?.type!=='output')throw Error('Manager can only return to the user. Reconnect operational Flow blocks below a Leader before upgrading.');e.sourcePort='user';e.targetPort='user';}if(e.sourcePort==='tool'&&e.targetPort==='tool'){[e.source,e.target]=[e.target,e.source];e.sourcePort='tasks';e.targetPort='manager';}}
+ next.settings={...next.settings,organization:{enabled:true,version:1}};return next;
+}
+
+export function factoryTemplate({newNode,uid}){
+ const nodes=[],edges=[],add=(type,name,x,y,config={})=>{const n=newNode(type,x,y);n.name=name;n.config={...n.config,...config};nodes.push(n);return n;},link=(a,ap,b,bp)=>edges.push({id:uid(),source:a.id,sourcePort:ap,target:b.id,targetPort:bp});
+ const manager=add('manager','Manager',130,100,{prompt:'Choose the best evidence-backed result for the user. Delegate research and a report to the Research Department. Use the quality assessment before your final decision.'}),leader=add('leader','Research Department',500,330,{prompt:'Break the assigned research into evidence collection and report production. Ask Research Specialist for sourced findings, then send actual findings to Report Builder. Report only confirmed results to Manager.'}),researcher=add('agent','Research Specialist',220,610,{role:'researcher',prompt:'Use the connected search to find dated evidence. Return a short sourced report with uncertainties. Do not ask the end user questions.',maxSteps:3}),search=add('perplexity','Web Research',100,900,{provider:'openai',model:'gpt-6.1-sol'}),report=add('report','Report Builder',750,610,{title:'Verified research report',format:'markdown'}),reviewer=add('reviewer','Quality Assurance',1000,330,{prompt:'Check source evidence, freshness, unsupported claims and whether the deliverable answers the user. Reject unsupported completion claims.'});
+ link(manager,'tasks',leader,'manager');link(manager,'tasks',reviewer,'manager');link(leader,'tasks',researcher,'manager');link(leader,'tasks',report,'manager');link(researcher,'tasks',search,'manager');link(leader,'report',reviewer,'observe');link(reviewer,'assessment',manager,'assessment');
+ for(const [index,n]of [manager,leader,researcher,reviewer].entries()){const m=add('model','OpenAI · '+n.name,n.x+40,n.y+160,{provider:'openai',model:'gpt-6.1-sol'});link(m,'model',n,'model');}
+ return {schemaVersion:1,nodes,edges,settings:{organization:{enabled:true,version:1,maxModelCalls:24,timeoutSeconds:300}}};
+}
