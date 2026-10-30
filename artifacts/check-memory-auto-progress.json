@@ -1,0 +1,39 @@
+{
+  "status": "deployed and verified",
+  "tests": {
+    "unit": 70,
+    "postgresIntegrationPassed": 6,
+    "browserCheckAutoOwnerMemberFixtures": true
+  },
+  "performanceEvidence": {
+    "processingBlocks": 22,
+    "mainDurableTransactions": 2,
+    "perStepDriveWrites": 0
+  },
+  "autoEnabledOnBehalfOfUser": false,
+  "latestRelease": "db37397752d612b3723ca06d709626be8c10aafc",
+  "previousFeatureRelease": "fc4f1ea50a4e1877403d176a89b16eae3f20ac62",
+  "previousFeatureRun": 41001794881,
+  "finalRun": 41002304487,
+  "coreVerification": {
+    "run": 41001794881,
+    "deployJob": 123888265337,
+    "publicBrowserJob": 123891764471,
+    "conclusion": "success"
+  },
+  "verifiedAt": "2026-10-30T04:42:30Z",
+  "finalVerification": {
+    "run": 41002304487,
+    "deployJob": 123892535148,
+    "publicBrowserJob": 123895737369,
+    "conclusion": "success",
+    "driveFirstVerified": true,
+    "functionRuntimeVerified": true,
+    "browserEditorVerified": true,
+    "publicServicesHealthy": [
+      "ai",
+      "portfolio",
+      "ticket"
+    ]
+  }
+}
