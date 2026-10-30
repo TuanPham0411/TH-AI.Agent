@@ -1,0 +1,32 @@
+{
+  "status": "verified deployed; all CI, images, native deployment and live editor passed",
+  "release": "8238fd12a5a5ab8f2a70eaeece514083ea69c462",
+  "featureRelease": "479e9a3468966b673a9f4b1150b5d8b16c70dfc7",
+  "featureRun": 41020787130,
+  "featureHostedTests": {
+    "unitPassed": 98,
+    "postgresPassed": 7,
+    "browserPassed": true
+  },
+  "localFinalTests": {
+    "unitPassed": 109,
+    "postgresSkipped": 7,
+    "browserPassed": true
+  },
+  "blueprints": 13,
+  "autoEnabledOnBehalfOfUser": false,
+  "livePaidRequestsOrPublishingPerformed": false,
+  "finalRun": 41028645146,
+  "finalTestJob": 123972762230,
+  "deployJob": 123973638541,
+  "finalTests": {
+    "unitPassed": 109,
+    "postgresPassed": 7,
+    "browserPassed": true
+  },
+  "publicEditorJob": 123975000661,
+  "driveFirstVerified": true,
+  "functionRuntimeVerified": true,
+  "publicEditorVerified": true,
+  "allThreeSitesHealthy": true
+}
