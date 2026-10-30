@@ -1,0 +1,7 @@
+# Chat answers and model selection
+
+Chat displays readable text instead of the run's JSON envelope. It supports an inert Markdown subset: headings, lists, emphasis, fenced code, tables, quotations and HTTP(S)/mailto links. Model HTML is shown as text, and images are never loaded implicitly. The Output tab, downloads and run history retain the original structured result. Vietnamese Unicode is preserved. Chat replies are also visible on narrow screens.
+
+New agents follow the request language unless an assignment/user explicitly asks for another language. Existing agents with the exact legacy English-only default receive the equivalent multilingual instruction at execution time; custom assignments are preserved. Older saved run results are displayed without a paid rerun, but are not translated retrospectively. No extra model request is needed for formatting or language selection.
+
+The OpenAI model block accepts a manually entered Model ID. **Load available OpenAI models** fetches the text-model candidates visible to the owner's saved API key and lists them by provider creation date. It performs no inference and never silently changes the configured model. Model visibility does not guarantee Chat Completions/tool compatibility, quota or billing access; consult the provider documentation for the selected ID. The existing low-cost template default is retained until explicitly changed. ChatGPT subscriptions and API access/billing are separate.
