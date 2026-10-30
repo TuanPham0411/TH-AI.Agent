@@ -16,7 +16,10 @@ export async function baseline(db,broker){
  try{
   await db.query('SELECT public.th_storage_lock()');
   // Operator must stop all application/background writers before invoking this.
-  const {history}=await broker('/v1/history',{});const parent=history.at(-1)?.id??null;
+  const {rows:[projection]}=await db.query('SELECT public.th_storage_head() AS head');const parent=projection.head;
+  // The broker's authoritative head rejects any unacknowledged/stale projection.
+  // Do not download the entire immutable history for every deployment.
+  const checked=await broker('/v1/check',{parent});if(checked.ready!==true)throw Error('Baseline head was not verified');
   const {rows:tables}=await db.query("select schemaname as schema,tablename as table from pg_tables where schemaname in ('public','portfolio','mes_private') and tablename not in ('schema_migrations','portfolio_schema_migrations','ai_schema_migrations') order by schemaname,tablename");
   const events=[];
   for(const table of tables){
@@ -102,7 +105,10 @@ export async function verifyWriteThrough(pool,broker){
  const db=await guarded.connect(),id=randomUUID();
  try{await db.query('BEGIN');await db.query('INSERT INTO public.th_storage_probe(id,value) VALUES($1,$2)',[id,{purpose:'drive-first-verification'}]);await db.query('DELETE FROM public.th_storage_probe WHERE id=$1',[id]);await db.query('COMMIT');}
  catch(error){await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
- const packet=await broker('/v1/event',{id:operation});
- if(packet.events.length!==2||packet.events[0].table!=='th_storage_probe'||packet.events[1].action!=='DELETE')throw Error('Write-through verification differs');
- return {driveFirstVerified:true,operation};
+ // /v1/commit already verifies event bytes and the immutable receipt on Drive
+ // before guarded COMMIT. Confirm the exact acknowledged operation is still head.
+ if(!operation)throw Error('Write-through operation was not acknowledged');
+ const checked=await broker('/v1/check',{parent:operation});
+ if(checked.ready!==true)throw Error('Write-through head verification differs');
+ return {driveFirstVerified:true,operation,acknowledgementVerified:true};
 }
