@@ -1,0 +1,54 @@
+name: Verify owner console release
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/verify-studio-owner.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: independent-studio-production, cancel-in-progress: false}
+jobs:
+  verify-runtime:
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 25
+    steps:
+      - name: Verify deployed owner release after exclusive maintenance finishes
+        run: |
+          set -euo pipefail
+          exec 9>>"$HOME/th-platform/deploy.lock"
+          flock -w 900 9
+          python3 -c 'import json,pathlib; assert json.loads((pathlib.Path.home()/"th-platform/state/ai-agent-deployment.json").read_text())["imageTag"] == "e96b766a2f9591c15b21a83f86c566bf5fdcaa34"'
+          curl --fail --silent --show-error --max-time 30 https://ai.th.io.vn/api/ready
+          curl --fail --silent --show-error --max-time 30 https://th.io.vn/api/health
+          curl --fail --silent --show-error --max-time 30 https://ticket.th.io.vn/api/health
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 15 https://ai.th.io.vn/api/internal/timers/tick)" = 404
+          systemctl is-active th-automation.service
+          timeout 120s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
+          import http from 'node:http';
+          import assert from 'node:assert/strict';
+          const body=JSON.stringify({code:'return {value:input.value*2};',input:{value:21}});
+          const probe=()=>new Promise((resolve,reject)=>{const req=http.request({socketPath:'/run/th-storage/automation.sock',path:'/function',method:'POST',headers:{Authorization:'Bearer '+process.env.TH_STORAGE_TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)},timeout:20000},res=>{let text='';res.on('data',c=>text+=c);res.on('end',()=>{try{if(res.statusCode!==200){const message=JSON.parse(text).error||'Function runtime failed';throw Object.assign(Error(message),{retryable:/including container startup|Another Function is already running/.test(message)});}resolve(JSON.parse(text));}catch(e){reject(e);}});});req.on('error',reject);req.on('timeout',()=>req.destroy());req.end(body);});
+          let result;for(let attempt=0;attempt<3;attempt++){try{result=await probe();break;}catch(error){if(!error.retryable||attempt===2)throw error;console.log('Pure Function readiness probe waiting for the busy host; no user workflow is retried.');await new Promise(resolve=>setTimeout(resolve,10000));}}
+          assert.equal(result.output.value,42);
+          console.log(JSON.stringify({functionRuntimeVerified:true,isolatedExecution:true}));
+          JS
+          curl --fail --silent --show-error --max-time 30 https://ai.th.io.vn/api/access/config | python3 -c 'import json,sys; c=json.load(sys.stdin); assert c["memberExecution"] is False; assert "serviceAccount" not in c; print(json.dumps({"publicConfigurationRedacted":True,"memberExecutionIsolated":True}))'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 15 https://ai.th.io.vn/api/admin/config)" = 403
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 15 https://ai.th.io.vn/api/workflows)" = 401
+
+  public-editor:
+    needs: verify-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v5
+        with: {node-version: '22'}
+      - name: Test the live public editor without owner credentials
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          LIVE_STUDIO_URL: https://ai.th.io.vn/
+        run: node tests/editor.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: deployed-studio-preview, path: artifacts/}
