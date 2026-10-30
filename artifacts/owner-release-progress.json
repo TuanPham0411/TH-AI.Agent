@@ -1,0 +1,21 @@
+{
+  "applicationRelease": "e96b766a2f9591c15b21a83f86c566bf5fdcaa34",
+  "applicationRun": 40976927996,
+  "verificationRun": 40977634249,
+  "verificationSource": "09e116b52401c86840284483cc8433ecd895f588",
+  "maintenanceRecoveryRun": 40976581519,
+  "status": "deployed and verified",
+  "tests": {
+    "unit": 52,
+    "postgres": 4,
+    "browserOwnerAndMemberFixtures": true
+  },
+  "runtimeVerificationJob": 123819071902,
+  "maintenanceDeferralRun": 40979155093,
+  "scratchContainersRemoved": 1,
+  "scratchDatabasesRemoved": 1,
+  "publicBrowserVerificationJob": 123819336208,
+  "verificationConclusion": "success",
+  "initialPostDeployFailure": "Function cold-start/socket timeout while orphan scratch recovery was consuming the Pi; serialized verification succeeded after scratch cleanup",
+  "liveFirebaseIntegrationTested": false
+}

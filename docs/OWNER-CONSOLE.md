@@ -24,9 +24,13 @@ match /agentStudioUsers/{document=**} {
 
 The repository includes this rule as a **merge snippet**, not a replacement for the project's existing rules. No Firebase rules, existing collections or service accounts are changed automatically.
 
+Firebase Authentication, Firestore reads/writes, storage and managed backups may incur provider charges according to the Google project plan and usage. Studio plan labels do not collect or cover those charges.
+
 The Web API key is public configuration, not administrative authorization. Restrict it to the required Firebase APIs/referrers using Google's supported settings. Never place a service-account private key in browser code, repository files, chat, or a block configuration.
 
 ## Data and identity boundaries
+
+Registration controls apply to Studio membership, not global Firebase Authentication account creation. Google sign-in can create an identity record in the shared Firebase project before Studio rejects a closed registration. This console does not delete or modify identities used by other applications. Its user list is the Studio membership namespace, not every Firebase Auth account.
 
 - Owner: existing PostgreSQL tables and Drive-first storage through TH-Server. Configuration/private key are server-only entries in the existing protected credential store, with durable transaction acknowledgement. They are never returned through configuration or credential-status APIs. Protect database/Drive/operator access and rotate keys when appropriate.
 - Members: `agentStudioUsers/{verifiedFirebaseUid}` and `.../workflows/{workflowUuid}` in Firestore. Each document stores JSON in its `payload` field. The verified token UID determines paths; submitted UID/role/plan values do not.

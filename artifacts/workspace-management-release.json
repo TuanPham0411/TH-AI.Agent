@@ -1,0 +1,19 @@
+{
+  "release": "e96b766a2f9591c15b21a83f86c566bf5fdcaa34",
+  "previousRelease": "f891162d654885935e046ecb6ea5b57897e3c18b",
+  "workflowRun": 40976927996,
+  "tests": "42 unit/API checks + 4 PostgreSQL integration checks + browser editor checks",
+  "features": [
+    "workflow and history deletion",
+    "media record deletion retaining archived files",
+    "toolbox groups collapsed by default",
+    "click to preview; Create block or drag to add",
+    "full canvas view",
+    "pin/unpin inspector",
+    "resizable toolbox, inspector, terminal",
+    "browser layout persistence"
+  ],
+  "deployment": "verified on production including native Function and real public browser",
+  "workspaceFeatureRelease": "3935d4487c882f684bd02b7009438a30b4aed8ad",
+  "verificationRun": 40977634249
+}

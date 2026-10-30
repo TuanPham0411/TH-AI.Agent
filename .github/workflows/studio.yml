@@ -102,16 +102,19 @@ jobs:
       - name: Verify public routes and the real Function runtime
         run: |
           set -euo pipefail
+          exec 9>>"$HOME/th-platform/deploy.lock"
+          flock -w 900 9
           curl --fail --silent --show-error --max-time 30 https://ai.th.io.vn/api/ready
           curl --fail --silent --show-error --max-time 30 https://th.io.vn/api/health
           curl --fail --silent --show-error --max-time 30 https://ticket.th.io.vn/api/health
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 15 https://ai.th.io.vn/api/internal/timers/tick)" = 404
           systemctl is-active th-automation.service
-          timeout 45s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
+          timeout 120s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
           import http from 'node:http';
           import assert from 'node:assert/strict';
           const body=JSON.stringify({code:'return {value:input.value*2};',input:{value:21}});
-          const result=await new Promise((resolve,reject)=>{const req=http.request({socketPath:'/run/th-storage/automation.sock',path:'/function',method:'POST',headers:{Authorization:'Bearer '+process.env.TH_STORAGE_TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)},timeout:20000},res=>{let text='';res.on('data',c=>text+=c);res.on('end',()=>{try{if(res.statusCode!==200)throw Error('Function runtime failed: '+text);resolve(JSON.parse(text));}catch(e){reject(e);}});});req.on('error',reject);req.on('timeout',()=>req.destroy());req.end(body);});
+          const probe=()=>new Promise((resolve,reject)=>{const req=http.request({socketPath:'/run/th-storage/automation.sock',path:'/function',method:'POST',headers:{Authorization:'Bearer '+process.env.TH_STORAGE_TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)},timeout:20000},res=>{let text='';res.on('data',c=>text+=c);res.on('end',()=>{try{if(res.statusCode!==200){const message=JSON.parse(text).error||'Function runtime failed';throw Object.assign(Error(message),{retryable:/including container startup|Another Function is already running/.test(message)});}resolve(JSON.parse(text));}catch(e){reject(e);}});});req.on('error',reject);req.on('timeout',()=>req.destroy());req.end(body);});
+          let result;for(let attempt=0;attempt<3;attempt++){try{result=await probe();break;}catch(error){if(!error.retryable||attempt===2)throw error;console.log('Pure Function readiness probe waiting for the busy host; no user workflow is retried.');await new Promise(resolve=>setTimeout(resolve,10000));}}
           assert.equal(result.output.value,42);
           console.log(JSON.stringify({functionRuntimeVerified:true,isolatedExecution:true}));
           JS
