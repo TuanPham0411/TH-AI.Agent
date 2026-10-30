@@ -1,0 +1,38 @@
+{
+  "status": "deployed and verified",
+  "chatRelease": "ba30300b3dbd2d8af268c5e575ba646d44a140bf",
+  "chatRun": 41006003466,
+  "chatDeployJob": 123901711574,
+  "chatPublicBrowserJob": 123905385852,
+  "latestRelease": "1ac8a07d582cbb93a552159a86c5bbde2f813499",
+  "finalRun": 41007627520,
+  "localTests": {
+    "passed": 83,
+    "postgresSkippedLocally": 6,
+    "browserFixturesPassed": true
+  },
+  "livePaidProviderCallsPerformed": false,
+  "autoEnabledOnBehalfOfUser": false,
+  "codingMode": "API assistants; no CLI/repository edits/test execution",
+  "verifiedAt": "2026-10-30T05:35:20Z",
+  "tests": {
+    "unitAndApiPassed": 83,
+    "postgresIntegrationPassed": 6,
+    "browserFixturesPassed": true,
+    "livePublicBrowserPassed": true
+  },
+  "finalVerification": {
+    "run": 41007627520,
+    "deployJob": 123906717182,
+    "publicBrowserJob": 123910426249,
+    "conclusion": "success",
+    "driveFirstVerified": true,
+    "functionRuntimeVerified": true,
+    "publicServicesHealthy": [
+      "ai",
+      "portfolio",
+      "ticket"
+    ]
+  }
+}
+
