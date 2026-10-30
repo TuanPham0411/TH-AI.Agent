@@ -7,7 +7,6 @@ on:
     paths: ['site/**', 'server/**', 'tests/**', 'deploy/**', 'Dockerfile', 'compose.yaml', 'storage.compose.yaml', 'package*.json', '.github/workflows/studio.yml']
   workflow_dispatch:
 permissions: {contents: read}
-concurrency: {group: independent-studio-production, cancel-in-progress: false}
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -63,6 +62,8 @@ jobs:
           cache-from: type=gha,scope=th-ai-agent-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=th-ai-agent-${{ matrix.target }}
   deploy:
+    # Build/test independently; serialize production mutations.
+    concurrency: {group: independent-studio-production, cancel-in-progress: false}
     needs: image
     runs-on: [self-hosted, Linux, ARM64]
     timeout-minutes: 35

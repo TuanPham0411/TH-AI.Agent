@@ -13,7 +13,7 @@ The English Studio now provides 13 editable blueprints in four operating groups.
 
 ## Content every five hours
 
-Use one producer and its companion delivery workflow, with the same campaign ID. The producer's Auto Input interval is **300 minutes**. It claims the time window, uses a research agent/search tool for dated source URLs, validates evidence, creates a structured creative brief and submits a paid media job. Captions/titles/source references and the campaign ID are retained in the job record. Memory and role boundaries separate research, creative work and actual publishing.
+Use one producer and its companion delivery workflow, with the same campaign ID. The producer's Auto Input interval is **300 minutes**. It claims the time window, runs the configured web search before the research agent for dated source URLs, validates evidence, creates a structured creative brief and submits a paid media job. Captions/titles/source references and the campaign ID are retained in the job record. Memory and role boundaries separate research, creative work and actual publishing.
 
 Campaign Delivery polls every five minutes. It reads one unfinished job, inspects actual provider readiness, archives completed media through TH-Server and performs at most two write transitions per cycle by default (editable 1–4). Subsequent cycles resume from durable channel receipts. Long media generation/upload is not treated as already published. Missed time windows coalesce; the system does not backfill a flood of posts. A failed producer after a window claim is not automatically resubmitted as another paid media job.
 
@@ -65,3 +65,11 @@ Animations reflect actual trace status: active edges, running icon rings/activit
 Official protocol references: [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-reference-direct-post), [TikTok media transfer/domain ownership](https://developers.tiktok.com/docs/en/content-posting-api-media-transfer-guide), [YouTube resumable uploads](https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol), [Meta's Threads API collection](https://www.postman.com/meta/threads/documentation/dht3nzz/threads-api).
 
 Trend Search is an explicit paid search invocation before the research model. Provider citation URLs are preserved as trusted context through the creative stages; a model-generated replacement source list does not overwrite those URLs. Parsed model output checks required field types before media generation.
+
+## Search provider setup and 403 errors
+
+New Trend Search blocks default to OpenAI Web Search (Responses API), reusing the existing OpenAI connection. Choose a web-search-capable model; the recommended default can be changed. Actual search execution and citation metadata are required, with one hosted tool-call allowance per request. Search/model fees still apply. Existing saved Perplexity blocks retain Perplexity until the owner explicitly selects another provider and Checks again. There is no automatic paid fallback.
+
+A Perplexity HTTP 403 means that endpoint denied the request; inspect the saved Sonar API key, API project permissions/billing and provider restrictions. It does not mean OpenAI failed. The UI now names the failed provider and offers the provider selector. API subscriptions/credits and model/tool permissions remain account-specific. See [OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search).
+
+OpenAI provider selection for new model blocks now defaults to `gpt-6.1-sol`. Existing saved workflows keep their selected IDs. **Use latest recommended model available** checks the API account model list before choosing the maintained recommendation; unavailable recommendations do not replace the current model silently. Selecting a different model requires Check/save again and may change price/latency. [Current OpenAI code/model guidance](https://developers.openai.com/api/docs/guides/code-generation).
