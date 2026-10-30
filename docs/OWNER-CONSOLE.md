@@ -47,3 +47,9 @@ Plan labels (`free`, `pro`, `business`) are metadata only. There is no payment c
 `publicStudio` controls whether the anonymous design workspace is displayed. All private APIs enforce identity independently; hiding the public editor is not an access-control boundary for static assets. Public registration defaults to Closed and cannot be enabled until the saved Firebase configuration passes a probe. If credentials/project change, close registration, save replacement credentials, probe, then reopen.
 
 Owner Google sign-in continues working if member Firebase is unavailable. Member configuration does not replace the owner OAuth client, system PostgreSQL connection, TH-Server storage broker or Drive identity.
+
+## Saving settings and enabling registration
+
+General settings can be saved with registration Closed before Firebase is configured. The console displays save progress, storage failures and conflicts directly inside the dialog. While saving/testing, controls are disabled to prevent duplicate submissions or lost edits.
+
+Require owner approval/Open registration are unavailable until the saved Firebase configuration passes its probe. The Firebase section opens automatically during setup. Upload and save the service-account JSON, test the saved configuration, select a registration mode, and save again. Editing Firebase credentials invalidates the probe; changing the studio name or public design setting does not. Object key ordering in PostgreSQL JSONB does not invalidate an otherwise unchanged Firebase configuration.
