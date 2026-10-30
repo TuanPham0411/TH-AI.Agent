@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {callModel} from '../server/studio-providers.js';
+test('GPT-6 agent uses stateless Responses and replays reasoning with exact tool call IDs',async()=>{
+ const options={provider:'openai',model:'gpt-6.1-sol',system:'Use the approved tool.',tools:[{name:'tool_0',description:'Read data',schema:{type:'object',properties:{q:{type:'string'}}}}]},secret={key:'test'},output=[{type:'reasoning',id:'rs_1',encrypted_content:'opaque-reasoning'},{type:'function_call',id:'fc_1',call_id:'call_123',name:'tool_0',arguments:'{"q":"hello"}'}];
+ const first=await callModel({...options,messages:[{role:'user',text:'Read'}]},secret,null,{requestJson:async(url,body)=>{assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(body.store,false);assert.equal(body.reasoning.effort,'low');assert.deepEqual(body.include,['reasoning.encrypted_content']);assert.equal(body.tools[0].name,'tool_0');assert.equal(body.tools[0].strict,false);return {status:'completed',output};}});
+ assert.deepEqual(first.calls,[{id:'call_123',name:'tool_0',args:{q:'hello'}}]);
+ const final=await callModel({...options,messages:[{role:'user',text:'Read'},{role:'assistant',text:first.text,calls:first.calls,responseItems:first.responseItems},{role:'tool',callId:'call_123',text:'{"value":42}'}]},secret,null,{requestJson:async(url,body)=>{assert.deepEqual(body.input.slice(1,3),output);assert.deepEqual(body.input[3],{type:'function_call_output',call_id:'call_123',output:'{"value":42}'});return {status:'completed',output:[{type:'message',content:[{type:'output_text',text:'Value is 42'}]}]};}});assert.equal(final.text,'Value is 42');
+});
+test('incomplete modern tool requests never reach execution and legacy models keep Chat transport',async()=>{
+ await assert.rejects(callModel({provider:'openai',model:'gpt-6-astra',system:'x',messages:[{role:'user',text:'x'}]},{key:'test'},null,{requestJson:async()=>({status:'incomplete',output:[{type:'function_call',call_id:'x',name:'tool_0',arguments:'{}'}]})}),/incomplete/);
+ await callModel({provider:'openai',model:'gpt-4.1-mini',system:'x',messages:[{role:'user',text:'x'}]},{key:'test'},null,{requestJson:async(url)=>{assert.equal(url,'https://api.openai.com/v1/chat/completions');return {choices:[{message:{content:'old workflow preserved'}}]};}});
+});
+
+test('workflow agent carries provider continuation items into its next tool turn',async()=>{
+ const {newNode}=await import('../site/workflow-model.js'),{executeWorkflow}=await import('../server/workflow-engine.js');
+ const chat=newNode('chat'),agent=newNode('agent'),model=newNode('model'),tool=newNode('think'),out=newNode('output');model.config.provider='openai';model.config.model='gpt-6.1-sol';
+ const edge=(source,target,sourcePort,targetPort)=>({id:source.id+target.id,source:source.id,target:target.id,sourcePort,targetPort});
+ const graph={nodes:[chat,agent,model,tool,out],edges:[edge(chat,agent,'out','in'),edge(model,agent,'model','model'),edge(tool,agent,'tool','tool'),edge(agent,out,'out','in')]};
+ const items=[{type:'reasoning',encrypted_content:'continuation'}];let turn=0;
+ const result=await executeWorkflow(graph,{text:'Use note'},{allowPaid:true,credentials:{openai:true},invoke:async(kind,data)=>{assert.equal(kind,'model');if(turn++===0)return {text:'',calls:[{id:'call_a',name:'tool_0',args:{}}],responseItems:items};assert.deepEqual(data.messages.at(-2).responseItems,items);assert.equal(data.messages.at(-1).callId,'call_a');return {text:'Complete',calls:[]};}});
+ assert.equal(result.output.text,'Complete');assert.equal(turn,2);
+});
