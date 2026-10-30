@@ -13,7 +13,7 @@ test('chunked files require complete content and durable acknowledgement; retry 
  assert.equal((await request('uploads/'+init.id+'/complete','{}')).status,400);
  assert.equal((await request('uploads/'+init.id+'?offset=1',Buffer.from('Xin chào'),'PUT')).status,400);
  assert.equal((await request('uploads/'+init.id+'?offset=0',Buffer.from('Xin chào'),'PUT')).status,200);
- let response=await request('uploads/'+init.id+'/complete','{}');assert.equal(response.status,400);assert.equal((await response.json()).durable,undefined);assert.equal(rows.size,0);
+ let response=await request('uploads/'+init.id+'/complete','{}');assert.equal(response.status,400);const failed=await response.json();assert.equal(failed.durable,undefined);assert.match(failed.error,/Drive did not acknowledge/);assert.equal(commits,1);assert.equal(rows.size,0);
  rejectCommit=false;response=await request('uploads/'+init.id+'/complete','{}');const file=await response.json();assert.equal(file.durable,true);assert.equal(file.name,'.._hello.txt');assert.equal(rows.size,1);assert.equal(commits,2);
  response=await request('uploads/'+init.id+'/complete','{}');assert.equal(response.status,200);assert.equal(commits,2);
  const resolved=await attachmentResolver({pool,root})([{role:'user',text:'Read this',attachments:[{id:file.id,path:'/etc/passwd',type:'image/png'}]}]);assert.equal(resolved[0].attachments[0].type,'text/plain');assert.equal(resolved[0].attachments[0].text,'Xin chào');
