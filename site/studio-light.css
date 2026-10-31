@@ -1,0 +1,75 @@
+/* Light workbench: a neutral tonal hierarchy, independent of the dark palette. */
+:root[data-theme=light]{color-scheme:light;color:#202b38;background:#d5dae1;--bg:#d9dee5;--panel:#f4f5f7;--surface:#e6e9ee;--raised:#cdd4dd;--border:#b7c1ce;--text:#202b38;--muted:#526174;--mint:#076c58;--blue:#245c9f;--purple:#6842a8;--orange:#955019;--yellow:#806016;--dots:#b0bac7;--shadow:0 8px 24px #2633431c}
+:root[data-theme=light] .studio{background:#d5dae1}
+:root[data-theme=light] .rail{background:linear-gradient(180deg,#303c4b,#202b39);border-color:#435065;box-shadow:5px 0 18px #1d283016}
+:root[data-theme=light] .rail-button{color:#e2e9f2;background:transparent;border-color:transparent;box-shadow:none}
+:root[data-theme=light] .rail-button:hover{color:#fff;background:#46576b;box-shadow:inset 3px 0 #99e4d2}
+:root[data-theme=light] .topbar{background:linear-gradient(110deg,#fafbfc,#edf0f4);border-color:#b8c2ce;box-shadow:0 3px 13px #29384b12}
+:root[data-theme=light] .library{background:#e4e8ee;border-color:#b7c1cd}
+:root[data-theme=light] .panel-heading{background:#edf0f4;border-bottom:1px solid #c6ced8}
+:root[data-theme=light] .toolbox-group>summary{background:#d9dfe7;border-bottom:1px solid #c5ced8;color:#344255}
+:root[data-theme=light] .toolbox-group[open]>summary{background:#cdd6e1;color:#202e40}
+:root[data-theme=light] .library-item{background:#edf0f4;color:var(--text);border-color:#d7dee7;box-shadow:0 1px 2px #25334307}
+:root[data-theme=light] .library-item:hover{background:#f9fafc;border-color:#a8b6c8;box-shadow:0 4px 10px #263a5012}
+:root[data-theme=light] .library-footer{background:#d7dee8;border-color:#b7c1ce}
+:root[data-theme=light] .canvas-toolbar{background:linear-gradient(90deg,#e9edf2,#dfe5ed);border-bottom:1px solid #b8c3d1}
+:root[data-theme=light] #canvas{background-color:#d2d9e2;background-image:radial-gradient(ellipse at 15% 15%,#f4f6f980,transparent 65%),radial-gradient(var(--dots) 1px,transparent 1px);background-size:100% 100%,20px 20px}
+:root[data-theme=light] .canvas-hint{background:#eaf0f5ed;color:#46566b;border:1px solid #bac6d4;border-radius:6px;padding:4px 8px}
+:root[data-theme=light] .node{background:linear-gradient(140deg,#fff,color-mix(in srgb,var(--accent) 5%,#f5f6f8));border-color:#aebbc9;box-shadow:0 3px 0 #b9c4d2,0 9px 19px #24354b18}
+:root[data-theme=light] .node-status{background:#e1e7ee;border-top-color:#c7d1de;color:#42526a}
+:root[data-theme=light] .node.selected{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent),0 9px 20px #24354b22}
+:root[data-theme=light] .node.error{background:linear-gradient(140deg,#fff,#fff1f2);border-color:#b84d60}
+:root[data-theme=light] .node .block-icon{background:color-mix(in srgb,currentColor 9%,#f8fafc);box-shadow:inset 0 1px #fff,0 2px 5px #263a5012}
+:root[data-theme=light] .sticky{background:linear-gradient(140deg,#fff9e6,#ede6d2);border-color:#bbae82;box-shadow:0 3px 0 #c4baa0,0 8px 18px #4e432018}
+:root[data-theme=light] .node .powered-io{background:#f6f8fb;color:#157a70;box-shadow:0 0 0 4px #edf1f6}
+:root[data-theme=light] .node .powered-io.io_user{color:#275b9b}
+:root[data-theme=light] .node .io-label{color:#46566b}
+:root[data-theme=light] .port-label{color:#4a5870}
+:root[data-theme=light] .edge{opacity:.85}
+:root[data-theme=light] .edge.task{stroke:#9b6013}
+:root[data-theme=light] .edge.report,:root[data-theme=light] .edge.assessment{stroke:#99478e}
+:root[data-theme=light] .edge.user,:root[data-theme=light] .edge.result{stroke:#2c659f}
+:root[data-theme=light] .inspector{background:#eef1f5;border-color:#b5c0cf;box-shadow:-5px 0 16px #283b5010}
+:root[data-theme=light] .inspector-head{background:#e3e8ef;border-bottom:1px solid #c0cbd8}
+:root[data-theme=light] .inspector-tabs{background:#d7dfe8;border-color:#b7c4d4}
+:root[data-theme=light] .inspector-controls{background:#e2e7ee}
+:root[data-theme=light] .console{background:#e0e6ed;border-color:#aebccc;box-shadow:0 -3px 12px #2633430c}
+:root[data-theme=light] .console>header{background:#cbd5e1;border-color:#adbbcd}
+:root[data-theme=light] .chat-response{background:#f9fafc;border:1px solid #b9c7d7;box-shadow:inset 0 1px 3px #253b5010;color:#253247}
+:root[data-theme=light] .chat-compose>textarea,:root[data-theme=light] input,:root[data-theme=light] select,:root[data-theme=light] textarea{background:#fafbfc;border-color:#b4c0cf;color:#253247;box-shadow:inset 0 1px 2px #22354908}
+:root[data-theme=light] .field input,:root[data-theme=light] .field select,:root[data-theme=light] .field textarea{background:#fff;border-color:#b4c0cf}
+:root[data-theme=light] #name{background:transparent;box-shadow:none;color:#202b38}
+:root[data-theme=light] .json-view,:root[data-theme=light] .result-output{background:#e3e8ef;color:#35455a;border-color:#b8c5d5;border-radius:8px}
+:root[data-theme=light] .connection-row,:root[data-theme=light] .credential-badge,:root[data-theme=light] .role-brief,:root[data-theme=light] .block-guide,:root[data-theme=light] .integration-card{background:#e0e6ee;border-color:#b8c5d6}
+:root[data-theme=light] .block-setup-guide{background:#e0e9e6;border-color:#a3bfb6}
+:root[data-theme=light] .cost-note{background:#f0e6d4;color:#795013;border-color:#9d6a26}
+:root[data-theme=light] .error,:root[data-theme=light] .setup-issues{color:#a63347}
+:root[data-theme=light] .guide-link{color:#245b9b}
+/* Solid, high-contrast controls. Structural cards/tabs keep their own tones. */
+:root[data-theme=light] button{background:#354458;color:#f6f8fc;border-color:#354458;box-shadow:0 2px 3px #24364e14}
+:root[data-theme=light] button:hover{background:#243449;color:#fff;border-color:#243449}
+:root[data-theme=light] .primary{background:linear-gradient(110deg,#213d4b,#285b5b)!important;color:#fff!important;border-color:#1b4148!important;box-shadow:0 4px 12px #1c474f26}
+:root[data-theme=light] .primary:hover{background:linear-gradient(110deg,#172f3e,#204c4e)!important;filter:none}
+:root[data-theme=light] #owner,:root[data-theme=light] .secondary,:root[data-theme=light] .text-button,:root[data-theme=light] .library-footer button{background:#354458;color:#f6f8fc;border-color:#354458}
+:root[data-theme=light] .danger{background:#743345;color:#fff;border-color:#743345}
+:root[data-theme=light] .library-item,:root[data-theme=light] .template-card,:root[data-theme=light] .list-card,:root[data-theme=light] .blueprint-card,:root[data-theme=light] .trace-row{background:#eef1f5;color:#253247;border-color:#b5c2d2;box-shadow:0 2px 5px #263b5010}
+:root[data-theme=light] .library-item:hover,:root[data-theme=light] .template-card:hover,:root[data-theme=light] .list-card:hover,:root[data-theme=light] .blueprint-card:hover{background:#fff;color:#253247;border-color:#849ab5}
+:root[data-theme=light] .blueprint-diagram{background:linear-gradient(145deg,#cbd5e2,#e3e9f1);border-color:#b5c2d2}
+:root[data-theme=light] .connection-link{background:transparent;color:#195a72;border:0;box-shadow:none}
+:root[data-theme=light] .tab{background:transparent;color:#42536a;border-color:transparent;box-shadow:none}
+:root[data-theme=light] .tab.active{background:#34465c;color:#fff;border-color:#34465c}
+:root[data-theme=light] .zoom-controls{background:#e5ebf2;border-color:#aab9cc;box-shadow:0 4px 12px #283b5017}
+:root[data-theme=light] #minimap{background:#e6edf5;border-color:#acbbce}
+:root[data-theme=light] dialog{background:#f0f3f7;border-color:#a7b6cb;box-shadow:0 25px 100px #182b4b40}
+:root[data-theme=light] dialog>header{background:#d8e1ec;border-color:#b3c1d3}
+:root[data-theme=light] dialog::backdrop{background:#23334b55}
+:root[data-theme=light] #toast{background:#25374d;color:#f4f7fc;border-color:#52647b;box-shadow:0 8px 25px #263b5030}
+:root[data-theme=light] #toast.error{background:#703347;color:#fff;border-color:#a8647a}
+/* These are sockets/rail navigation, not filled action buttons. */
+:root[data-theme=light] .rail-button{background:transparent;color:#e2e9f2;border-color:transparent;box-shadow:none}
+:root[data-theme=light] .rail-button:hover{background:#46576b;color:#fff}
+:root[data-theme=light] .node .port{padding:0;box-shadow:none}
+:root[data-theme=light] .node .powered-io{box-shadow:0 0 0 4px #edf1f6}
+:root[data-theme=light] .node .port.model{background:#ded3f1;border:2px solid #7150a7}
+:root[data-theme=light] .node .port.memory{background:#d1e1f3;border:2px solid #386aa5}
+:root[data-theme=light] .node .port.tool{background:#f2d9bd;border:2px solid #9c652b}

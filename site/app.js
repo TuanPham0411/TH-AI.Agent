@@ -18,6 +18,7 @@ import './polish.css';
 import './experience.css';
 import './chat-answer.css';
 import './studio-premium.css';
+import './studio-light.css';
 import {installAdministration} from './administration.js';
 import {credentialProviders,serviceBlocks,serviceGuide,googleScopes,microsoftScopes} from './connectors.js';
 import {agentRoles,getAgentRole} from './agent-roles.js';
