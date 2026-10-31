@@ -1,6 +1,6 @@
 # Powered data I/O
 
-Every executable card displays two bidirectional **data** sockets by default:
+Every operational data card displays two bidirectional **data** sockets by default. Pure Model/Memory infrastructure keeps only its existing controller sockets:
 
 - **I/O · Tool** carries internal Flow data, approved tasks, returned reports, observations and assessments.
 - **I/O · User** carries direct user requests and responses. Chat/Output bridges use this socket. Requests may combine text, structured JSON, stored image/video/document references and HTTP(S) links. Stored output files have download/preview controls.
