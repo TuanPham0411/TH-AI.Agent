@@ -35,3 +35,7 @@ test('multimodal payloads contain actual bytes and reject unsupported media befo
 });
 
 test('submitted async media jobs remain discoverable for output refresh/archive',()=>{assert.equal(outputArtifacts({jobId:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',status:'starting',asynchronous:true}).jobs.length,1);});
+
+test('nested multi-output products persist downloadable files with a shared size/count budget',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'studio-nested-output-'));t.after(()=>rm(root,{recursive:true,force:true}));const input={outputs:[{value:{files:[{name:'first.txt',content:'first'}]}},{value:{products:{files:[{name:'second.txt',content:'second'}]}}}]};const prepared=await outputFiles(input,{root});assert.equal(prepared.files.length,2);const found=outputArtifacts(prepared.output).files;assert.equal(found.length,2);for(const file of prepared.files)assert.equal((await readFile(join(root,file.path))).toString(),file.name.startsWith('first')?'first':'second');assert(found.every(f=>f.url&&!f.content));assert.equal(input.outputs[0].value.files[0].content,'first');await assert.rejects(outputFiles({outputs:Array.from({length:6},(_,i)=>({value:{files:[{id:String(i),name:'existing.txt'}]}}))},{root}),/five output files/);
+});

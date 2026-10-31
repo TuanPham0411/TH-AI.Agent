@@ -23,3 +23,7 @@ The inspector shows the actual workflow deadline: 180 seconds for classic Flow; 
 A saved credential is not necessarily verified. A read-only free account probe can verify some connections; providers without one require an explicitly approved paid run. HTTP 401/403 can indicate key/project permissions, billing, eligibility, regional/network restrictions or an incompatible API—not only an empty balance. Inspect the provider's own console/playground and preserve the error context without sharing secrets.
 
 Managed failures return a correlated report to the direct manager. Supervisor rejection returns an actual Leader correction request. When no active supervision is assigned, Manager evaluates the reports itself. Missing approvals, stale Flow data and blocked procedure gates do not become completed actions. Check the exact destination after uncertain writes before manually retrying.
+
+## Powered data sockets
+
+Data I/O is multiplexed into **I/O · Tool** (internal tasks/data/reports) and **I/O · User** (direct requests/results). Both are bidirectional and accept multiple routes. Select a route purpose if ambiguous. Model, Memory and Tool controllers remain dedicated and unchanged. Existing templates/workflows render the new sockets without configuration migration. See [Powered I/O](POWERED-IO.md) for addressing, fan-in and media limits.
