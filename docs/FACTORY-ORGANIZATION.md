@@ -15,7 +15,7 @@ Every management model request includes the exact live roster: names, roles, cap
 
 - **User**: text, JSON and existing private file/image/video references. The task recipient selector chooses Manager by default; other enabled workers can receive direct user commands. Existing provider modality/file-size limitations still apply.
 - **Task ⇄ report**: Manager/Leader `tasks` to worker `manager`. One connection means an approved assignment in one direction and a correlated report back. Legacy attached Tool connections remain supported. Each model assignment needs an explicit `approved: true`; approval is bound to the immediate issuer and concrete task.
-- **Controller**: Model, optional Memory and supported Tool controllers. These are configured/authenticated as before.
+- **Controller**: Model and optional Memory remain dedicated. Callable Tool links now share I/O · Tool with task/report and data routes; their configured authentication and role permissions remain enforced.
 - **Flow**: carries exact data to the next connected worker's inbox. In factory mode it does not authorize execution: that next worker still requires a manager assignment, after upstream data is ready. Ordinary non-factory Flow workflows retain sequential branch execution. Conditions stage only the selected branch.
 - **Observe**: Leader `report` to peer Supervisor/Reviewer `observe`.
 - **Assessment**: Supervisor/Reviewer `assessment` to its Manager `assessment`. Assessment results are also included in the task report automatically.

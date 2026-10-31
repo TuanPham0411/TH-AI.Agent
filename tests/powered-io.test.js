@@ -9,7 +9,7 @@ test('legacy templates retain all controller routes while data routes share two 
  const graph=factoryTemplate({newNode,uid}),before=structuredClone(graph);
  for(const e of graph.edges){const source=graph.nodes.find(n=>n.id===e.source),controller=controllerChannel(getPorts(source),'outputs',e.sourcePort);assert.equal(edgeSocket(graph,e,getPorts),controller?null:e.sourcePort==='user'?'io_user':'io_tool');}
  const manager=graph.nodes.find(n=>n.type==='manager');assert(socketRoutes(graph,manager,'io_tool',getPorts).length>1);assert.equal(socketRoutes(graph,manager,'io_user',getPorts).length,0);assert.deepEqual(graph,before);assert.deepEqual(validateGraph(graph),[]);
- const agent=newNode('agent'),model=newNode('model'),memory=newNode('memory'),tool=newNode('perplexity'),g={nodes:[agent,model,memory,tool],edges:[]};for(const n of [model,memory])assert.deepEqual(ioCandidates(g,n,agent,'io_tool',{getPorts,connectError}),[]);assert(ioCandidates(g,tool,agent,'io_tool',{getPorts,connectError}).every(e=>e.sourcePort!=='tool'&&e.targetPort!=='tool'));
+ const agent=newNode('agent'),model=newNode('model'),memory=newNode('memory'),tool=newNode('perplexity'),g={nodes:[agent,model,memory,tool],edges:[]};for(const n of [model,memory])assert.deepEqual(ioCandidates(g,n,agent,'io_tool',{getPorts,connectError}),[]);assert(ioCandidates(g,tool,agent,'io_tool',{getPorts,connectError}).some(e=>e.kind==='tool'));
 });
 test('I/O route chooser retains direction, branching and direct-manager ownership',()=>{
  const a=newNode('condition'),b=newNode('output'),g={nodes:[a,b],edges:[]},routes=ioCandidates(g,a,b,'io_user',{getPorts,connectError});assert.deepEqual(routes.map(e=>e.sourcePort).sort(),['no','yes']);
