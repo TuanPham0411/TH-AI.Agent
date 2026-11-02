@@ -1,0 +1,57 @@
+name: Rotate AI Studio Firebase credential
+on:
+  push:
+    branches: [main]
+    paths: ['operator/rotate-firebase.mjs', 'operator-tests/rotate-firebase.test.mjs', '.github/workflows/rotate-ai-firebase.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ai-firebase-rotation
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test operator-tests/rotate-firebase.test.mjs
+  rotate:
+    needs: test
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify dedicated AI runner
+        run: test '${{ runner.name }}' = th-ai.agent
+      - name: Verify new key and save AI-only configuration with durable acknowledgement
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec 9> "$HOME/th-platform/deploy.lock"
+          flock -w 120 9
+          python3 - <<'PY'
+          import base64,json,os,pathlib,stat,subprocess,sys
+          path=pathlib.Path.home()/'th-platform/config/ai-studio/firebase-service-account.ai-agent-67316.json'
+          info=path.lstat()
+          if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode & 0o077 or info.st_size>30000:
+            sys.exit('Credential file ownership, type, size or permissions invalid; contents redacted.')
+          source=base64.b64encode(pathlib.Path('operator/rotate-firebase.mjs').read_bytes()).decode()
+          payload=json.dumps({'clientSource':pathlib.Path('server/th-storage/client.mjs').read_text(),'serviceAccount':json.loads(path.read_text())})
+          command=['docker','exec','-i','-w','/app','-e','TH_FIREBASE_ROTATE_MAIN=1','-e','TH_OPERATOR_SOURCE='+source,'ai-agent-api-1','node','--input-type=module','-e',"await import('data:text/javascript;base64,'+process.env.TH_OPERATOR_SOURCE)"]
+          result=subprocess.run(command,input=payload,text=True,timeout=420,capture_output=True)
+          # Only structured, allowlisted results may enter the Actions log.
+          for line in (result.stdout+'\n'+result.stderr).splitlines():
+            try: value=json.loads(line)
+            except ValueError: continue
+            allowed=['rotated','alreadyCurrent','projectId','firestoreVerified','durable','revision','rotationFailed','code','credentialContentsRedacted']
+            safe={key:value[key] for key in allowed if key in value}
+            if safe: print(json.dumps(safe))
+          if result.returncode: sys.exit('AI Firebase rotation failed; credential contents redacted.')
+          PY
