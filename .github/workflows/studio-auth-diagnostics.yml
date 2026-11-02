@@ -8,7 +8,7 @@ permissions: {contents: read}
 jobs:
   diagnose:
     runs-on: [self-hosted, Linux, ARM64]
-    timeout-minutes: 22
+    timeout-minutes: 8
     steps:
       - name: Inspect container readiness and classified storage errors without exposing credentials
         run: |
@@ -42,28 +42,22 @@ jobs:
           for(const path of ['/api/ready','/api/auth/session','/api/oauth/start']){try{const r=await fetch('https://ai.th.io.vn'+path,{redirect:'manual',signal:AbortSignal.timeout(15000)});console.log(JSON.stringify({publicProbe:path,status:r.status,googleRedirect:r.status===302&&r.headers.get('location')?.startsWith('https://accounts.google.com/')}))}catch{console.log(JSON.stringify({publicProbe:path,networkFailed:true}))}}
           JS
 
-      - name: Recover only a confirmed missing storage runtime task
+      - name: Read the restored broker socket state without restarting services
         run: |
           set -euo pipefail
-          python3 - <<'PYRECOVER'
-          import subprocess,json
-          p=subprocess.run(['docker','exec','th-platform-storage-1','node','-e','process.exit(0)'],capture_output=True,text=True,timeout=20)
-          missing=p.returncode==126 and 'task' in (p.stdout+p.stderr).lower() and 'not found' in (p.stdout+p.stderr).lower()
-          print(json.dumps({'brokerRuntimeTaskMissing':missing,'execSucceeded':p.returncode==0}))
-          if missing:
-            r=subprocess.run(['docker','restart','--time','20','th-platform-storage-1'],capture_output=True,text=True,timeout=90)
-            print(json.dumps({'storageRestarted':r.returncode==0}))
-            if r.returncode:raise SystemExit('Storage restart failed; no other container was changed.')
-          elif p.returncode:raise SystemExit('Unrecognized runtime failure; automatic restart skipped.')
-          PYRECOVER
-      - name: Wait for restored authentication transport without reading secrets
-        run: |
-          set -euo pipefail
-          timeout 900s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
-          import http from 'node:http';import {randomBytes} from 'node:crypto';
-          const probe=()=>new Promise(resolve=>{const body=Buffer.from(JSON.stringify({binding:randomBytes(32).toString('hex')}));const req=http.request({socketPath:process.env.TH_STORAGE_SOCKET,path:'/v1/auth/start',method:'POST',headers:{Authorization:'Bearer '+process.env.TH_STORAGE_TOKEN,'X-TH-Application':'ai-agent','Content-Type':'application/json','Content-Length':body.length}},res=>{let value='';res.on('data',b=>value+=b);res.on('end',()=>{try{const data=JSON.parse(value),u=new URL(data.url);resolve(res.statusCode===200&&u.origin==='https://accounts.google.com')}catch{resolve(false)}})});req.setTimeout(8000,()=>req.destroy());req.on('error',()=>resolve(false));req.end(body)});
-          let ready=false;for(let attempt=0;attempt<160;attempt++){if(await probe()){ready=true;break;}if(attempt%6===0)console.log(JSON.stringify({brokerRecoveryPending:true,attempt}));await new Promise(r=>setTimeout(r,5000));}
-          if(!ready)throw Error('Broker has not finished recovery. No credentials or data were changed.');
-          console.log(JSON.stringify({brokerAuthenticationReady:true}));
-          for(const path of ['/api/auth/session','/api/oauth/start']){const r=await fetch('https://ai.th.io.vn'+path,{redirect:'manual',signal:AbortSignal.timeout(15000)});const good=path.endsWith('/start')?r.status===302&&r.headers.get('location')?.startsWith('https://accounts.google.com/'):r.status===200;console.log(JSON.stringify({publicProbe:path,status:r.status,verified:good}));if(!good)throw Error('Public authentication check failed');}
-          JS
+          python3 - <<'PYPROBE'
+          import subprocess,json,os
+          script="""import http from 'node:http';import {stat,readFile} from 'node:fs/promises';const p='/run/th-storage/storage.sock';try{const s=await stat(p);console.log(JSON.stringify({socket:true,inode:s.ino,device:s.dev}))}catch(e){console.log(JSON.stringify({socketError:e.code}))}try{const lines=(await readFile('/proc/net/unix','utf8')).split(String.fromCharCode(10));console.log(JSON.stringify({listeningSocketEntries:lines.filter(l=>l.endsWith(p)).length}))}catch{}await new Promise(resolve=>{const r=http.request({socketPath:p,path:'/v1/auth/session',method:'POST'},res=>{res.resume();res.on('end',()=>{console.log(JSON.stringify({unauthenticatedStatus:res.statusCode}));resolve()})});r.setTimeout(5000,()=>r.destroy());r.on('error',e=>{console.log(JSON.stringify({socketProbeError:e.code||'failed'}));resolve()});r.end('{}')});"""
+          for name in ['th-platform-storage-1','ai-agent-api-1']:
+            info=json.loads(subprocess.check_output(['docker','inspect',name]))[0]['State'];pid=info.get('Pid',0);alive=False
+            if pid:
+              try:os.kill(pid,0);alive=True
+              except PermissionError:alive=True
+              except ProcessLookupError:pass
+            print(json.dumps({'container':name,'hostPidAlive':alive,'running':info.get('Running'),'restarting':info.get('Restarting'),'startedAt':info.get('StartedAt')}))
+            p=subprocess.run(['docker','exec','-i',name,'node','--input-type=module','-'],input=script,capture_output=True,text=True,timeout=20)
+            print(json.dumps({'container':name,'execCode':p.returncode,'taskMissing':'task' in p.stderr.lower() and 'not found' in p.stderr.lower()}))
+            for line in p.stdout.splitlines():
+              try:print(json.dumps({'container':name,'result':json.loads(line)}))
+              except:pass
+          PYPROBE
