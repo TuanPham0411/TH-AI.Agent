@@ -105,3 +105,19 @@ jobs:
           if(!present){const change=await fetch(url+'?updateMask=authorizedDomains',{method:'PATCH',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({authorizedDomains:[...new Set([...domains,'ai.th.io.vn'])]}),signal:AbortSignal.timeout(15000)});console.log(JSON.stringify({firebaseAuthorizedDomainAdded:change.ok,status:change.status}));if(change.ok){const check=await fetch(url,{headers,signal:AbortSignal.timeout(15000)});const saved=await check.json();console.log(JSON.stringify({firebaseAuthorizedDomainVerified:check.ok&&saved.authorizedDomains?.includes('ai.th.io.vn')}))}}
           }catch{console.log(JSON.stringify({firebaseDomainCheckNetworkFailed:true}))}
           JS
+
+      - name: Inspect actual broker command and process liveness without arguments or secrets
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPROCESS'
+          import subprocess,json
+          name='th-platform-storage-1';raw=json.loads(subprocess.check_output(['docker','inspect',name]))[0];cmd=raw['Config'].get('Cmd') or []
+          print(json.dumps({'brokerCommandIncludesMain':any(str(x).endswith('storage/main.mjs') for x in cmd),'brokerCommandKind':cmd[0] if cmd and cmd[0] in ['node','sleep','sh','bash','tail'] else 'other'}))
+          p=subprocess.run(['docker','top',name,'-eo','pid,comm,etime,pcpu,pmem'],capture_output=True,text=True,timeout=10)
+          print(json.dumps({'brokerProcesses':p.stdout.splitlines()[:12],'topSucceeded':p.returncode==0}))
+          script="""import {readFile,readdir,stat} from 'node:fs/promises';console.log(JSON.stringify({pid1Command:(await readFile('/proc/1/comm','utf8')).trim()}));for(const name of await readdir('/state'))if(/^(ai-agent|portfolio|ticket|server|drive-root)\.json$/.test(name)){const s=await stat('/state/'+name);console.log(JSON.stringify({mapping:name,modified:s.mtime.toISOString(),bytes:s.size}))}"""
+          p=subprocess.run(['docker','exec','-i',name,'node','--input-type=module','-'],input=script,capture_output=True,text=True,timeout=15)
+          for line in p.stdout.splitlines():
+            try:print(json.dumps(json.loads(line)))
+            except:pass
+          PYPROCESS
