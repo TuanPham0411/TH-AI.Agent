@@ -29,6 +29,24 @@ jobs:
                 if marker.lower() in line.lower(): counts[marker]+=1;last[marker]=line.split(' ',1)[0][:35]
             print(json.dumps({'container':name,'classifiedErrors':dict(counts),'lastSeen':last}))
           PY
+      - name: Start only the confirmed stopped storage container
+        run: |
+          set -euo pipefail
+          python3 - <<'PYSTART'
+          import subprocess,json,os
+          name='th-platform-storage-1';info=json.loads(subprocess.check_output(['docker','inspect',name]))[0]['State']
+          if not info.get('Running'):
+            p=subprocess.run(['docker','start',name],capture_output=True,text=True,timeout=90)
+            print(json.dumps({'storageStartRequested':True,'commandSucceeded':p.returncode==0}))
+            if p.returncode:raise SystemExit('Storage start failed; no configuration was changed.')
+          else:print(json.dumps({'storageAlreadyRunning':True}))
+          info=json.loads(subprocess.check_output(['docker','inspect',name]))[0]['State'];pid=info.get('Pid',0);alive=False
+          if pid:
+            try:os.kill(pid,0);alive=True
+            except PermissionError:alive=True
+            except ProcessLookupError:pass
+          print(json.dumps({'storageRunning':info.get('Running'),'hostPidAlive':alive,'startedAt':info.get('StartedAt')}))
+          PYSTART
       - name: Probe sign-in transport without exchanging a Google authorization code
         run: |
           set -euo pipefail
