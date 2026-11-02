@@ -1,0 +1,43 @@
+name: Diagnose Studio sign-in availability
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/studio-auth-diagnostics.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 8
+    steps:
+      - name: Inspect container readiness and classified storage errors without exposing credentials
+        run: |
+          set -euo pipefail
+          test '${{ runner.name }}' = th-ai.agent
+          python3 - <<'PY'
+          import subprocess,json,collections
+          names=subprocess.check_output(['docker','ps','-a','--format','{{.Names}}']).decode().splitlines()
+          selected=[n for n in names if n in ['ai-agent-api-1','ai-agent-db-1'] or n.startswith('th-platform-storage-')]
+          markers=['invalid_grant','invalid_client','unauthorized_client','ENOTFOUND','EAI_AGAIN','ETIMEDOUT','ECONNREFUSED','ENOENT','EACCES','ENOSPC','Too many sign-in attempts','Invalid sign-in state','Storage authentication required','Owner authentication unavailable','Google OAuth refresh failed','fetch failed','TH storage ready','Storage operation failed']
+          for name in selected:
+            raw=json.loads(subprocess.check_output(['docker','inspect',name]))[0];s=raw['State']
+            print(json.dumps({'container':name,'running':s.get('Running'),'restarting':s.get('Restarting'),'oomKilled':s.get('OOMKilled'),'exitCode':s.get('ExitCode'),'restartCount':raw.get('RestartCount'),'startedAt':s.get('StartedAt'),'health':s.get('Health',{}).get('Status')}))
+            lines=subprocess.run(['docker','logs','--timestamps','--tail','150',name],capture_output=True,text=True,timeout=15)
+            counts=collections.Counter();last={}
+            for line in (lines.stdout+'\n'+lines.stderr).splitlines():
+              for marker in markers:
+                if marker.lower() in line.lower(): counts[marker]+=1;last[marker]=line.split(' ',1)[0][:35]
+            print(json.dumps({'container':name,'classifiedErrors':dict(counts),'lastSeen':last}))
+          PY
+      - name: Probe sign-in transport without exchanging a Google authorization code
+        run: |
+          set -euo pipefail
+          timeout 100s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
+          import http from 'node:http';
+          import {randomBytes} from 'node:crypto';
+          import {existsSync} from 'node:fs';
+          console.log(JSON.stringify({storageSocketExists:existsSync(process.env.TH_STORAGE_SOCKET),storageTokenConfigured:!!process.env.TH_STORAGE_TOKEN}));
+          async function probe(path,body){return new Promise(resolve=>{const bytes=Buffer.from(JSON.stringify(body));const req=http.request({socketPath:process.env.TH_STORAGE_SOCKET,path,method:'POST',headers:{Authorization:'Bearer '+process.env.TH_STORAGE_TOKEN,'X-TH-Application':'ai-agent','Content-Type':'application/json','Content-Length':bytes.length}},res=>{let value='';res.on('data',b=>{if(value.length<50000)value+=b});res.on('end',()=>{let data;try{data=JSON.parse(value)}catch{};const result={probe:path,status:res.statusCode};if(path.endsWith('/start')&&res.statusCode===200){try{const u=new URL(data.url);result.googleRedirectReady=u.origin==='https://accounts.google.com';result.clientConfigured=!!u.searchParams.get('client_id');result.callbackCorrect=u.searchParams.get('redirect_uri')==='https://ai.th.io.vn/api/oauth/callback'}catch{result.invalidResponse=true}}else if(path.endsWith('/session'))result.authenticated=data?.authenticated;else if(path==='/v1/status')result.connected=data?.connected;else if(path==='/v1/history')result.historyReadable=Array.isArray(data?.history);if(res.statusCode!==200)result.errorClass=/authentication required/i.test(data?.error)?'broker-authorization':/unavailable for this application/i.test(data?.error)?'owner-auth-unavailable':/storage unavailable/i.test(data?.error)?'storage-unavailable':'other';resolve(result)})});req.setTimeout(15000,()=>req.destroy(Object.assign(Error('timeout'),{code:'ETIMEDOUT'})));req.on('error',e=>resolve({probe:path,errorCode:/^[A-Z_]+$/.test(e.code||'')?e.code:'transport-failed'}));req.end(bytes)})}
+          for(const [path,body]of [['/v1/auth/session',{session:''}],['/v1/auth/start',{binding:randomBytes(32).toString('hex')}],['/v1/status',{}],['/v1/history',{}]])console.log(JSON.stringify(await probe(path,body)));
+          for(const path of ['/api/ready','/api/auth/session','/api/oauth/start']){try{const r=await fetch('https://ai.th.io.vn'+path,{redirect:'manual',signal:AbortSignal.timeout(15000)});console.log(JSON.stringify({publicProbe:path,status:r.status,googleRedirect:r.status===302&&r.headers.get('location')?.startsWith('https://accounts.google.com/')}))}catch{console.log(JSON.stringify({publicProbe:path,networkFailed:true}))}}
+          JS
