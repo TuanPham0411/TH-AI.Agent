@@ -79,3 +79,13 @@ jobs:
               try:print(json.dumps({'container':name,'result':json.loads(line)}))
               except:pass
           PYPROBE
+
+      - name: Inspect only public Firebase project identifiers in saved Studio configuration
+        run: |
+          set -euo pipefail
+          timeout 25s docker exec -i ai-agent-api-1 node --input-type=module - <<'JS'
+          import pg from 'pg';
+          const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000});
+          try{const r=await pool.query("SELECT secret->'web'->>'projectId' AS project,secret->'web'->>'authDomain' AS domain,secret->'serviceAccount'->>'project_id' AS service_project,(secret->>'verifiedAt') IS NOT NULL AS verified,secret->>'registration' AS registration FROM ai_credentials WHERE id='_studio_control'");console.log(JSON.stringify({firebaseProjectConfiguration:r.rows[0]||{saved:false}}))}finally{await pool.end()}
+          const r=await fetch('https://ai.th.io.vn/api/access/config',{signal:AbortSignal.timeout(10000)});const c=await r.json();console.log(JSON.stringify({publicFirebaseProject:c.web?.projectId||null,publicFirebaseReady:c.firebaseReady,registration:c.registration}));
+          JS
