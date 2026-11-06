@@ -1,3 +1,4 @@
+import {publicOrigin} from './public-origin.js';
 import express from 'express';
 import {createPrivateKey,createPublicKey,sign,verify} from 'node:crypto';
 import {publicRequest} from './studio-providers.js';
@@ -48,7 +49,7 @@ export function administrationRoutes({pool,session,request=publicRequest,makeSto
  const load=async()=>{const row=(await pool.query('SELECT secret FROM ai_credentials WHERE id=$1',[CONFIG])).rows[0];return row?.secret?{...defaults(),...row.secret}:defaults();};
  const store=c=>makeStore(c,{request,cache:tokenCache});
  async function save(c,event){if(mutating)fail('Another administration change is in progress. Retry shortly.',409);mutating=true;let db;try{db=await pool.connect();await db.query('BEGIN');const current=(await db.query('SELECT secret FROM ai_credentials WHERE id=$1 FOR UPDATE',[CONFIG])).rows[0]?.secret;if((current?.version||0)!==c.version)fail('Configuration changed elsewhere. Reload Owner Console.',409);c={...c,version:c.version+1};const previous=(await db.query('SELECT secret FROM ai_credentials WHERE id=$1',[AUDIT])).rows[0]?.secret?.events||[];const events=[{at:new Date().toISOString(),actor:OWNER_EMAIL,event},...previous].slice(0,200);await db.query('INSERT INTO ai_credentials(id,secret) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,updated_at=now()',[CONFIG,JSON.stringify(c)]);await db.query('INSERT INTO ai_credentials(id,secret) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,updated_at=now()',[AUDIT,JSON.stringify({events})]);await db.query('COMMIT');}catch(e){await db?.query('ROLLBACK').catch(()=>{});throw e;}finally{db?.release();mutating=false;}}
- router.use((req,res,next)=>{if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&req.headers.origin!=='https://ai.th.io.vn')return res.status(403).json({error:'Same-origin request required'});next();});
+ router.use((req,res,next)=>{if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&req.headers.origin!==publicOrigin())return res.status(403).json({error:'Same-origin request required'});next();});
  router.get('/access/config',route(async(req,res)=>{const c=await load();res.json({name:c.name,publicStudio:c.publicStudio,registration:c.registration,firebaseReady:!!c.verifiedAt,web:c.verifiedAt?c.web:null,memberExecution:false});}));
  // Keep owner control separate from Firebase membership and client-supplied roles.
  router.use('/admin',(req,res,next)=>{session(req).then(owner=>{if(!owner.authenticated||owner.email?.toLowerCase()!==OWNER_EMAIL)return res.status(403).json({error:'Only the verified Studio owner may administer this service.'});req.owner=owner;next();}).catch(next);});

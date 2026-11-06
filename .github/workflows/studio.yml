@@ -62,6 +62,8 @@ jobs:
           cache-from: type=gha,scope=th-ai-agent-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=th-ai-agent-${{ matrix.target }}
   deploy:
+    # Deployment is managed explicitly by TH-RPI.Server on the selected host.
+    if: false
     # Build/test independently; serialize production mutations.
     concurrency: {group: independent-studio-production, cancel-in-progress: false}
     needs: image

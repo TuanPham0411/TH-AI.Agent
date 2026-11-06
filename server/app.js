@@ -1,5 +1,6 @@
+import {publicOrigin} from './public-origin.js';
 import express from 'express';
-export function createApp({production=false,allowedHosts=['ai.th.io.vn','localhost','127.0.0.1'],checkDatabase,ownerRouter,internalRouter}={}){
+export function createApp({production=false,allowedHosts=[new URL(publicOrigin()).hostname,'localhost','127.0.0.1'],checkDatabase,ownerRouter,internalRouter}={}){
  const app=express();app.disable('x-powered-by');
  app.use((req,res,next)=>{res.set({'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});if(!allowedHosts.includes(req.hostname))return res.status(421).json({error:'Unrecognized hostname'});if(production&&!ownerRouter&&req.method!=='GET'&&req.method!=='HEAD')return res.status(405).json({error:'Read-only foundation'});next();});
  app.get('/api/health',(_req,res)=>res.json({status:'ok',service:'th-ai',version:'0.1.0',authentication:ownerRouter?'google-owner':'not-configured'}));
