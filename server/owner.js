@@ -1,12 +1,13 @@
+import {publicOrigin} from './public-origin.js';
 import express from 'express';
 import {administrationRoutes} from './administration.js';
 import {studioRoutes} from './studio.js';
 import {randomBytes,createHash} from 'node:crypto';
 import {brokerRequest} from './th-storage/client.mjs';
-const origin='https://ai.th.io.vn';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const cookie=(req,name)=>{const value=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='));return value?value.slice(name.length+1):'';};
 export function ownerRoutes({pool,request=bodyRequest,studio=studioRoutes({pool})}={}){
+ const origin=publicOrigin();
  const router=express.Router();router.use(express.json({limit:'512kb'}));
  const run=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  const session=req=>request('/v1/auth/session',{session:cookie(req,'__Host-th-ai')});

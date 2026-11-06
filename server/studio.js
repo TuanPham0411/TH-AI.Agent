@@ -1,3 +1,4 @@
+import {publicOrigin} from './public-origin.js';
 import {createIORouter} from '../site/powered-io.js';
 import {approveOrganizationalTask} from './organization-approval.js';
 import {isOrganization} from '../site/organization.js';
@@ -21,13 +22,13 @@ import {randomBytes,randomUUID,createHash,timingSafeEqual} from 'node:crypto';
 import {catalog,validateGraph,validateManifest,registerAddin} from '../site/workflow-model.js';
 import {executeWorkflow} from './workflow-engine.js';
 import {invokeProvider,publicRequest,queryDatabase} from './studio-providers.js';
-const origin='https://ai.th.io.vn',redirect=origin+'/api/oauth/callback';
 const validId=id=>typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id);
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const sessionCookie=req=>(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('__Host-th-ai='))?.slice(13)||'';
 const equal=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 export function automationCall(body,{signal,token=process.env.TH_STORAGE_TOKEN,socketPath=process.env.TH_AUTOMATION_SOCKET||'/run/th-storage/automation.sock'}={}){return new Promise((resolve,reject)=>{const data=JSON.stringify(body);const req=http.request({socketPath,path:'/function',method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','Content-Length':Buffer.byteLength(data)},timeout:20000,signal},res=>{let text='';res.on('data',c=>{text+=c;if(text.length>220000)req.destroy(Error('Function output is too large.'));});res.on('end',()=>{try{const v=JSON.parse(text);if(res.statusCode!==200)throw Error(v.error||'Function execution failed.');resolve(v.output);}catch(e){reject(e);}});});req.on('error',()=>reject(Error('Function runtime is unavailable or exceeded its deadline.')));req.on('timeout',()=>req.destroy());req.end(data);});}
 export function studioRoutes({pool,request=publicRequest}={}){
+ const origin=publicOrigin(),redirect=origin+'/api/oauth/callback';
  const router=express.Router(),internal=express.Router();let busy=false,lastTick=null;const controllers=new Map(),memory=new RuntimeMemory(),pendingCheckpoints=new Map(),accessTokens=new Map();
  router.use(studioFileRoutes({pool}));
  mountSharedMedia(internal,{pool});

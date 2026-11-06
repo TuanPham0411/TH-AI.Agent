@@ -1,3 +1,4 @@
+import {publicOrigin} from './public-origin.js';
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import {archiveMedia} from './media-archive.js';
@@ -19,7 +20,7 @@ export function campaignRuntime({pool,getSecret,setSecret,saveJob,request,sharin
  async function publish({input,targets,maxTransitions=2},{allowWrites,signal,beforeWrite=()=>{}}={}){
   if(!allowWrites)fail('Approve external publishing for this run.');if(!Number.isInteger(maxTransitions)||maxTransitions<1||maxTransitions>4)fail('Set 1–4 publishing transitions per run.');if(!Array.isArray(targets)||!targets.some(t=>t.enabled)||targets.length>8)fail('Configure at least one publishing destination.');if(!/^[a-f0-9-]{36}$/i.test(input?.jobId||''))fail('Provide a queued media job ID.');
   let job=(await pool.query('SELECT state FROM ai_media_jobs WHERE id=$1',[input.jobId])).rows[0]?.state;if(!job||job.status!=='succeeded')fail('The media job is not ready.');
-  if(!job.files?.length)job=await archive(job,{pool});const file=job.files[0];if(!file)fail('No media file is available.');if(!sharingKey)fail('TH-Server media sharing is not configured.');const expires=String(Math.floor(Date.now()/1000)+86300),url='https://ai.th.io.vn/api/media/shared/'+file.id+'?'+new URLSearchParams({expires,signature:sharedSignature(file.id,expires,sharingKey)}),video=file.type.startsWith('video/');
+  if(!job.files?.length)job=await archive(job,{pool});const file=job.files[0];if(!file)fail('No media file is available.');if(!sharingKey)fail('TH-Server media sharing is not configured.');const expires=String(Math.floor(Date.now()/1000)+86300),url=publicOrigin()+'/api/media/shared/'+file.id+'?'+new URLSearchParams({expires,signature:sharedSignature(file.id,expires,sharingKey)}),video=file.type.startsWith('video/');
   const ledgerId='_studio_delivery_'+job.id,ledger=await load(ledgerId)||{jobId:job.id,channels:{},createdAt:new Date().toISOString()};let transitions=0;
   const selected=targets.filter(t=>t.enabled);for(const target of selected){if(!['facebook','threads','tiktok','youtube'].includes(target.platform)||!/^[-\w]{1,120}$/.test(target.accountId||''))fail('Invalid publishing destination.');}
   const persist=()=>store(ledgerId,ledger);
