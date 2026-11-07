@@ -1,6 +1,7 @@
+import {providerInfo,discoverModels,usageSummary} from './model-catalog.js';
 import {publicOrigin} from './public-origin.js';
 import express from 'express';
-import {createPrivateKey,createPublicKey,sign,verify} from 'node:crypto';
+import {createPrivateKey,createPublicKey,createHash,sign,verify} from 'node:crypto';
 import {publicRequest} from './studio-providers.js';
 import {validateGraph} from '../site/workflow-model.js';
 export const OWNER_EMAIL='eric.scorp93@gmail.com';
@@ -62,6 +63,31 @@ export function administrationRoutes({pool,session,request=publicRequest,makeSto
  router.use('/member',(req,res,next)=>{(async()=>{const c=await load();if(!c.verifiedAt)fail('Member storage is not configured.',503);const bearer=req.headers.authorization;if(!/^Bearer [A-Za-z0-9_.-]+$/.test(bearer||''))fail('Google sign-in required.',401);const identity=await verifyIdentity(bearer.slice(7),c.web.projectId,request,certCache);const now=Date.now();for(const [id,rate]of rates)if(rate.until<=now)rates.delete(id);let rate=rates.get(identity.uid);if(!rate){if(rates.size>=1000)fail('Member service is at capacity. Retry shortly.',429);rate={count:0,until:now+60000};rates.set(identity.uid,rate);}if(++rate.count>60)fail('Too many requests. Retry in one minute.',429);const account=await request('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key='+encodeURIComponent(c.web.apiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:bearer.slice(7)})});const user=account.users?.find(u=>u.localId===identity.uid);if(!user||user.disabled===true||Number(user.validSince)>identity.authTime)fail('This Google identity is no longer active.',401);const probes=[identity.uid,identity.uid+'/workflows/00000000-0000-0000-0000-000000000000','__studio_access_probe__','__studio_access_probe__/workflows/00000000-0000-0000-0000-000000000000'];const direct=await Promise.all(probes.map(path=>request('https://firestore.googleapis.com/v1/projects/'+c.web.projectId+'/databases/(default)/documents/agentStudioUsers/'+path,{headers:{Authorization:bearer},acceptErrors:true})));if(direct.some(r=>r.error?.code!==403))fail('Firestore rules must deny direct client access to agentStudioUsers and workflows before member access is enabled.',503);req.memberIdentity=identity;req.control=c;req.memberStore=store(c);next();})().catch(next);});
  router.post('/member/register',route(async(req,res)=>{const db=req.memberStore,id=req.memberIdentity,path='agentStudioUsers/'+id.uid;let row=await db.get(path);if(!row){if(req.control.registration==='closed')fail('New registrations are closed.',403);const stamp=new Date().toISOString();row=await db.put(path,{uid:id.uid,email:id.email,name:id.name,status:req.control.registration==='approval'?'pending':'active',role:'member',plan:'free',createdAt:stamp,updatedAt:stamp});}res.json({...row.value,updateTime:row.updateTime,memberExecution:false});}));
  router.use('/member',(req,res,next)=>{(async()=>{const row=await req.memberStore.get('agentStudioUsers/'+req.memberIdentity.uid);if(!row||row.value.status!=='active')fail('Your account is pending approval or blocked.',403);req.member=row.value;next();})().catch(next);});
+ // Private model keys share the encrypted durable store, never the owner's namespace.
+ const memberKey=(req,provider)=>'_studio_member_'+createHash('sha256').update(req.memberIdentity.uid).digest('hex')+'_'+provider;
+ const memberSecret=async(req,provider)=>(await pool.query('SELECT secret FROM ai_credentials WHERE id=$1',[memberKey(req,provider)])).rows[0]?.secret;
+ router.get('/member/ai-account',route(async(req,res)=>{
+  const drafts=await req.memberStore.list('agentStudioUsers/'+req.memberIdentity.uid+'/workflows');
+  const providers=await Promise.all(Object.entries(providerInfo).map(async([id,info])=>({id,...info,configured:!!(await memberSecret(req,id))?.key,verification:null,inUse:drafts.items.flatMap(w=>(w.value.graph?.nodes||[]).filter(n=>n.type==='model'&&n.config?.provider===id).map(n=>({model:n.config.model,workflowTitle:w.value.title})))})));
+  res.set('Cache-Control','no-store').json({providers,usage:usageSummary([]),coverage:{days:30,runs:0,limited:false,executionAvailable:false,note:'Member workflow execution is not enabled. No owner usage or credentials are shared.'},checkedAt:new Date().toISOString()});
+ }));
+ router.get('/member/models/:provider',route(async(req,res)=>{
+  if(!providerInfo[req.params.provider])fail('Unsupported AI provider.');
+  res.set('Cache-Control','no-store').json(await discoverModels(req.params.provider,await memberSecret(req,req.params.provider),request,{capability:req.query.capability==='responses'?'responses':'chat'}));
+ }));
+ router.put('/member/ai-connections/:provider',route(async(req,res)=>{
+  if(req.member.role==='viewer')fail('Viewer accounts cannot change connections.',403);
+  if(!providerInfo[req.params.provider])fail('Unsupported AI provider.');
+  const key=req.body?.key;if(typeof key!=='string'||!key.trim()||key.length>8000)fail('Enter a valid API key.');
+  await pool.query('INSERT INTO ai_credentials(id,secret) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,updated_at=now()',[memberKey(req,req.params.provider),JSON.stringify({key:key.trim()})]);
+  res.set('Cache-Control','no-store').json({configured:true,durable:true});
+ }));
+ router.delete('/member/ai-connections/:provider',route(async(req,res)=>{
+  if(req.member.role==='viewer')fail('Viewer accounts cannot change connections.',403);
+  if(!providerInfo[req.params.provider])fail('Unsupported AI provider.');
+  await pool.query('DELETE FROM ai_credentials WHERE id=$1',[memberKey(req,req.params.provider)]);
+  res.set('Cache-Control','no-store').json({removed:true,durable:true});
+ }));
  router.get('/member/session',route(async(req,res)=>res.json({...req.member,memberExecution:false})));
  router.get('/member/workflows',route(async(req,res)=>{const r=await req.memberStore.list('agentStudioUsers/'+req.memberIdentity.uid+'/workflows',req.query.pageToken);res.json({workflows:r.items.map(x=>({...x.value,graph:undefined,etag:x.updateTime})),nextPageToken:r.nextPageToken});}));
  router.get('/member/workflows/:id',route(async(req,res)=>{if(!idOK(req.params.id))fail('Invalid workflow ID.');const r=await req.memberStore.get('agentStudioUsers/'+req.memberIdentity.uid+'/workflows/'+req.params.id);if(!r)fail('Workflow not found.',404);res.json({...r.value,etag:r.updateTime});}));

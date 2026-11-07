@@ -1,0 +1,41 @@
+/** Deterministic transformations shared by real server runs and browser previews. */
+export const pathAt=(v,path)=>String(path||'').split('.').filter(Boolean).reduce((x,k)=>['__proto__','prototype','constructor'].includes(k)?undefined:x?.[k],v);
+const maximum=2000;
+function rows(input,field='rows'){const value=Array.isArray(input)?input:pathAt(input,field);if(!Array.isArray(value)||value.length>maximum)throw Error('Expected an array with at most '+maximum+' rows at '+field+'.');return value;}
+function objectJSON(text){const v=JSON.parse(text);if(!v||Array.isArray(v)||typeof v!=='object'||Object.keys(v).some(k=>['__proto__','prototype','constructor'].includes(k)))throw Error('Use a JSON object with safe column names.');return v;}
+export function parseCSV(text,{delimiter=',',header=true}={}){
+ if(typeof text!=='string'||text.length>160000)throw Error('CSV text must be at most 160 KB.');
+ if(typeof delimiter!=='string'||delimiter.length!==1||/["\r\n]/.test(delimiter))throw Error('Use one delimiter character.');
+ text=text.replace(/^\uFEFF/,'');const table=[];let record=[],cell='',quoted=false,closed=false;
+ const finish=()=>{record.push(cell);if(record.some(x=>x!==''))table.push(record);record=[];cell='';closed=false;if(table.length>maximum+1)throw Error('CSV exceeds '+maximum+' rows.');};
+ for(let i=0;i<text.length;i++){const ch=text[i];if(quoted){if(ch==='"'&&text[i+1]==='"'){cell+='"';i++;}else if(ch==='"'){quoted=false;closed=true;}else cell+=ch;continue;}if(ch==='"'){if(cell||closed)throw Error('Invalid CSV quote.');quoted=true;}else if(ch===delimiter){record.push(cell);cell='';closed=false;}else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text[i+1]==='\n')i++;finish();}else{if(closed&&ch!==' '&&ch!=='\t')throw Error('Unexpected characters after a quoted cell.');if(!closed)cell+=ch;}}
+ if(quoted)throw Error('Unclosed quoted CSV cell.');finish();if(!table.length)return [];
+ const names=header?table.shift():table[0].map((_,i)=>'column_'+(i+1));if(names.some(x=>!x.trim()||['__proto__','constructor','prototype'].includes(x))||new Set(names).size!==names.length)throw Error('CSV headers must be unique, non-empty safe names.');
+ return table.map((record,i)=>{if(record.length!==names.length)throw Error('CSV row '+(i+2)+' has an unexpected number of columns.');return Object.fromEntries(names.map((name,j)=>[name,record[j]]));});
+}
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const csvCell=v=>{let s=typeof v==='object'&&v!==null?JSON.stringify(v):String(v??'');if(/^[\s]*[=+@-]/.test(s))s="'"+s;return /[",\r\n]/.test(s)?'"'+s.replaceAll('"','""')+'"':s;};
+export function exportData(value,{title='Report',format='csv'}={}){
+ const list=Array.isArray(value)?value:[value];const columns=[...new Set(list.flatMap(r=>Object.keys(r&&typeof r==='object'?r:{value:r})))];const table=list.map(r=>r&&typeof r==='object'?r:{value:r});let text,type,extension;
+ if(format==='csv'){text='\uFEFF'+[columns.map(csvCell).join(','),...table.map(r=>columns.map(k=>csvCell(r[k])).join(','))].join('\r\n');type='text/csv';extension='csv';}
+ else if(format==='json'){text=JSON.stringify(value,null,2);type='application/json';extension='json';}
+ else if(format==='markdown'){text='# '+String(title).replace(/[\r\n]/g,' ')+'\n\n```json\n'+JSON.stringify(value,null,2).replaceAll('```','` ` `')+'\n```';type='text/markdown';extension='md';}
+ else if(format==='html'){text='<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>'+esc(title)+'</title><style>body{font:15px system-ui;margin:40px;color:#172437}table{border-collapse:collapse;width:100%}th,td{padding:10px;border:1px solid #ccd5e0;text-align:left}th{background:#edf2fa}@media print{body{margin:0}}</style><h1>'+esc(title)+'</h1><table><thead><tr>'+columns.map(k=>'<th>'+esc(k)+'</th>').join('')+'</tr></thead><tbody>'+table.map(r=>'<tr>'+columns.map(k=>'<td>'+esc(typeof r[k]==='object'?JSON.stringify(r[k]):r[k])+'</td>').join('')+'</tr>').join('')+'</tbody></table>';type='text/html';extension='html';}
+ else throw Error('Unsupported export format.');
+ if(text.length>70000)throw Error('Report exceeds 70 KB; filter or aggregate the input first.');return {title,format,rowCount:table.length,report:text,files:[{name:String(title).replace(/[^\p{L}\p{N}_-]/gu,'_').slice(0,80)+'.'+extension,content:text,type}]};
+}
+export function transformData(type,input,config={}){
+ if(type==='csv_read'){const data=parseCSV(pathAt(input,config.field),config);return {rows:data,rowCount:data.length};}
+ if(type==='rows_export')return exportData(pathAt(input,config.field)??input,config);
+ if(type==='rows_join'){
+  const left=rows(input,config.left),right=rows(input,config.right),index=new Map();for(const item of right){const key=pathAt(item,config.rightKey);if(key===undefined||key===null)continue;const typed=JSON.stringify([typeof key,key]);if(!index.has(typed))index.set(typed,[]);index.get(typed).push(item);}
+  const result=[];for(const item of left){const key=pathAt(item,config.leftKey),matches=key==null?[]:index.get(JSON.stringify([typeof key,key]))||[];for(const match of matches.length?matches:config.mode==='left'?[null]:[]){result.push({...item,joined:match});if(result.length>maximum)throw Error('Join exceeds '+maximum+' rows.');}}return {rows:result,rowCount:result.length};
+ }
+ const data=rows(input,config.field);
+ if(type==='rows_filter'){const compare=v=>{const target=config.value;switch(config.operator){case 'equals':return String(v)===String(target);case 'not_equals':return String(v)!==String(target);case 'contains':return String(v??'').includes(target);case 'exists':return v!==null&&v!==undefined;case 'gt':return finite(v)>finite(target);case 'gte':return finite(v)>=finite(target);case 'lt':return finite(v)<finite(target);case 'lte':return finite(v)<=finite(target);default:throw Error('Unsupported comparison.');}};const result=data.filter(r=>compare(pathAt(r,config.column)));return {...input,rows:result,rowCount:result.length};}
+ if(type==='rows_map'){const mapping=objectJSON(config.mapping);return {rows:data.map(r=>Object.fromEntries(Object.entries(mapping).map(([key,path])=>[key,pathAt(r,path)??null]))),rowCount:data.length};}
+ if(type==='rows_aggregate'){const keys=String(config.groupBy||'').split(',').map(x=>x.trim()).filter(Boolean),groups=new Map();for(const row of data){const values=keys.map(k=>pathAt(row,k)??null),id=JSON.stringify(values);if(!groups.has(id))groups.set(id,{keys:values,values:[],count:0});const g=groups.get(id);g.count++;const v=pathAt(row,config.valueField);if(v!==null&&v!==undefined&&String(v).trim()!==''&&Number.isFinite(Number(v)))g.values.push(Number(v));}return {rows:[...groups.values()].map(g=>({...Object.fromEntries(keys.map((key,i)=>[key,g.keys[i]])),count:g.count,numericCount:g.values.length,sum:g.values.reduce((a,b)=>a+b,0),average:g.values.length?g.values.reduce((a,b)=>a+b,0)/g.values.length:null,min:g.values.length?Math.min(...g.values):null,max:g.values.length?Math.max(...g.values):null})),rowCount:groups.size};}
+ if(type==='rows_validate'){const schema=objectJSON(config.schema),issues=[],valid=[];data.forEach((row,index)=>{let ok=true;for(const [column,rule]of Object.entries(schema)){const value=pathAt(row,column),missing=value===null||value===undefined||String(value).trim()==='';if(!['required','number','email','date'].includes(rule))throw Error('Unknown schema rule: '+rule);const accepted=rule==='required'?!missing:!missing&&(rule==='number'?Number.isFinite(Number(value)):rule==='email'?/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value)):Number.isFinite(Date.parse(value)));if(!accepted){ok=false;issues.push({row:index+1,column,rule});}}if(ok)valid.push(row);});return {rows:valid,issues,validCount:valid.length,invalidCount:data.length-valid.length};}
+ throw Error('Unsupported data transformation.');
+}
+function finite(v){if(v===null||v===undefined||String(v).trim()===''||!Number.isFinite(Number(v)))return NaN;return Number(v);}

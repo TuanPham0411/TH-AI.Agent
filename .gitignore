@@ -7,3 +7,7 @@ work/
 *.log
 *.dump
 *.tar.gz
+
+artifacts/*.png
+artifacts/*.jpg
+__pycache__/
