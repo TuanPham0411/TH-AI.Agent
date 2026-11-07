@@ -9,3 +9,5 @@ mes/dist
 *.dump
 *.tar.gz
 *.log
+
+artifacts

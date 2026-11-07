@@ -1,0 +1,1 @@
+export function behaviorInstructions(node){return [['style','WORKING STYLE'],['process','METHOD AND DECISIONS'],['reporting','REPORTING REQUIREMENTS'],['delegation','DELEGATION RULES']].filter(([key])=>typeof node.config[key]==='string'&&node.config[key].trim()).map(([key,label])=>label+':\n'+node.config[key]).join('\n\n');}
