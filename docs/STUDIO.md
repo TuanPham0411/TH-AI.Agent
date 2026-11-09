@@ -82,3 +82,11 @@ See [Automation readiness assessment](AUTOMATION-ASSESSMENT.md) for the comparis
 Use **Check workflow** to validate and save the complete configuration. Green marks distinguish verified saved connections from merely entered credentials; local marks mean static checks passed. Run reuses the checked configuration, saved credentials and bounded in-memory caches. Traces no longer require a Drive transaction at each step. See [Check, Memory and Auto](CHECK-MEMORY-AUTO.md) for checkpoint semantics, performance verification and limits.
 
 **Auto · TH-Server** lets the owner review a recurring goal, approved model/tool blocks and per-run/day limits. It continues without an open browser, using the `auto` conversation session. AI managers can decide among their approved tools and summarize pending work for later cycles. Deployment leaves Auto disabled; paid requests and external writes require explicit saved approval in that panel.
+
+### Spatial company operations
+
+`/#workflow` opens the operations floor for every saved workflow and browser draft, including direct visits and reloads. Office remains organization administration; the floor shows the actual workflow appointments, departments, tools, reporting paths, upstream report dependencies and execution evidence. It does not turn a legacy graph into a staffed company or mark idle people as working. Use **Meet Director** / **New assignment** to plan an approved organization.
+
+Select a person or department to inspect their job description, style, skills, assigned work, manager, direct reports, connection readiness and private memory. Pan the floor, zoom, fit or double-click a position to focus. **Evidence** uses real trace records; partial/blocked deliveries are distinguished from a completed run. Recorded history is labelled and has no live animation. **Review & run** opens explicit input/cost/write controls and uses the existing authoritative checks and run API. Delivered results retain the regular report renderer and artifact links.
+
+**Advanced graph** (`/#workflow/graph`) retains the technical editor. **Open block console** selects the real block, with behavior in the bottom console and settings/connections on the right. **Company operations** returns to the floor. Mobile devices retain the operator-only Office interface.
