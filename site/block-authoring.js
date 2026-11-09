@@ -9,7 +9,7 @@ export function behaviorFields(node){
  if(node.type==='function')return [f('code','JavaScript · input → return JSON','code',12)];
  if(codingAgents[node.type])return [f('task','Coding assignment'),f('context','Project context / source code','code',8)];
  if(['timer','auto_input'].includes(node.type))return [f('payload','Input for each scheduled run (JSON)','code',7)];
- if(['text_to_image','text_to_video','image_to_video'].includes(node.type))return [f('prompt','Creative brief / input mapping','textarea',7)];
+ if(['text_to_image','text_to_video','image_to_video','text_to_audio'].includes(node.type))return [f('prompt','Creative brief / input mapping','textarea',7)];
  if(node.type==='database'||node.type.startsWith('db_'))return [f('query','Read-only query','code',8)];
  if(node.type==='trend_search')return [f('query','Research question / input mapping')];
  if(node.type==='note')return [f('text','Working notes')];

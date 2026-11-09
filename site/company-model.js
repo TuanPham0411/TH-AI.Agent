@@ -1,0 +1,41 @@
+/** Shared company structure. The human CEO owns policy; AI directors never expand permissions. */
+export const departments=[
+ {id:'strategy',name:'Chiến lược & Kịch bản',short:'Chiến lược',code:'ST',color:'#7564c8',mission:'Từ yêu cầu mở đến kế hoạch có thể thực hiện.',deliverables:['Kế hoạch hành động','Kịch bản & storyboard','Tiêu chí nghiệm thu'],people:[['planner','Chuyên viên hoạch định'],['screenwriter','Biên kịch']],tools:['report','source_http']},
+ {id:'analysis',name:'Phân tích & Kỹ thuật',short:'Phân tích',code:'AN',color:'#407c9e',mission:'Tìm nguyên nhân, kiểm tra giả thuyết, đưa ra hướng xử lý có bằng chứng.',deliverables:['Phân tích nguyên nhân gốc','Kế hoạch kiểm thử','Khuyến nghị kỹ thuật'],people:[['analyst','Chuyên viên phân tích lỗi'],['engineer','Kỹ sư giải pháp']],tools:['rows_validate','stats','report']},
+ {id:'data',name:'Dữ liệu & Báo cáo',short:'Dữ liệu',code:'DA',color:'#3a8c81',mission:'Biến dữ liệu thành kết luận rõ ràng và báo cáo có thể kiểm chứng.',deliverables:['Bộ dữ liệu đã kiểm tra','Thống kê & biểu đồ','Báo cáo xuất file'],people:[['statistician','Chuyên viên thống kê'],['analyst','Chuyên viên báo cáo']],tools:['rows_validate','rows_aggregate','chart_report','rows_export']},
+ {id:'creative',name:'Sáng tạo & Nội dung',short:'Sáng tạo',code:'CR',color:'#c17c50',mission:'Phát triển nội dung đúng đối tượng, giọng điệu và mục tiêu.',deliverables:['Bài viết & thông điệp','Concept sáng tạo','Kịch bản sản xuất'],people:[['creator','Chuyên viên nội dung'],['editor','Biên tập viên']],tools:['report','quality_check']},
+ {id:'media',name:'Studio Đa phương tiện',short:'Studio',code:'ME',color:'#b6657f',mission:'Sản xuất hình ảnh, âm thanh và video từ brief đã duyệt.',deliverables:['Thiết kế & ảnh gốc','Âm thanh / thuyết minh','Video & bộ tài nguyên'],people:[['designer','Giám đốc mỹ thuật'],['designer','Chuyên viên sản xuất media']],tools:['text_to_image','text_to_video','text_to_audio']},
+ {id:'social',name:'Marketing & Kênh số',short:'Marketing',code:'SO',color:'#527bbd',mission:'Lập kế hoạch và vận hành các kênh theo quyền đã cấp.',deliverables:['Lịch nội dung','Nội dung đa nền tảng','Biên nhận xuất bản'],people:[['marketing','Chuyên viên chiến dịch'],['publisher','Chuyên viên xuất bản']],tools:['report','quality_check']},
+ {id:'operations',name:'Vận hành & Tích hợp',short:'Vận hành',code:'OP',color:'#7f8b58',mission:'Kết nối quy trình, hệ thống và bàn giao công việc có kiểm soát.',deliverables:['Quy trình vận hành','Bàn giao & workorder','Thông tin kết nối'],people:[['operator','Chuyên viên vận hành'],['engineer','Chuyên viên tích hợp']],tools:['source_http','report']},
+ {id:'assurance',name:'Giám sát & An toàn',short:'Giám sát',code:'QA',color:'#a87945',mission:'Kiểm tra phạm vi, bằng chứng, chất lượng và các dấu hiệu bất thường.',deliverables:['Checklist nghiệm thu','Danh sách lỗi / cảnh báo','Đề xuất khắc phục'],people:[['controller','Chuyên viên tuân thủ'],['analyst','Chuyên viên kiểm tra']],tools:['quality_check','report']}
+];
+export const departmentById=id=>departments.find(d=>d.id===id);
+export const companyServices=[
+ {id:'script',name:'Xây dựng kịch bản',description:'Ý tưởng, cấu trúc, lời thoại và kế hoạch sản xuất.',departments:['strategy','creative'],icon:'script'},
+ {id:'root-cause',name:'Phân tích lỗi',description:'Bằng chứng, giả thuyết nguyên nhân và kế hoạch xác minh.',departments:['analysis','assurance'],icon:'analysis'},
+ {id:'reporting',name:'Dữ liệu & báo cáo',description:'Kiểm tra số liệu, lập thống kê, biểu đồ và báo cáo.',departments:['data'],icon:'chart'},
+ {id:'production',name:'Sản xuất đa phương tiện',description:'Brief sáng tạo và quy trình tạo ảnh, âm thanh, video.',departments:['creative','media'],icon:'media'},
+ {id:'marketing',name:'Vận hành kênh số',description:'Chiến dịch, nội dung, lịch đăng và theo dõi biên nhận.',departments:['strategy','social'],icon:'social'},
+ {id:'custom',name:'Giao việc chuyên biệt',description:'Chọn phòng ban phù hợp với công việc của bạn.',departments:['operations'],icon:'layers'}
+];
+export function companyGraph({departmentIds=['strategy'],provider='gemini',model='gemini-2.5-flash',review=true},{newNode,uid}){
+ const selected=[...new Set(departmentIds)].map(departmentById);if(!selected.length||selected.length>3||selected.some(x=>!x))throw Error('Chọn từ một đến ba phòng ban cho mỗi công việc.');if(!['gemini','openai','anthropic'].includes(provider)||typeof model!=='string'||!model.trim()||model.length>100)throw Error('Chọn nhà cung cấp và model hợp lệ.');
+ const nodes=[],edges=[],people=[],leaders=[];
+ const add=(type,name,x,y,config={})=>{const n=newNode(type,x,y);if(name)n.name=name;n.config={...n.config,...config};nodes.push(n);return n;};
+ const link=(a,ap,b,bp)=>edges.push({id:uid(),source:a.id,sourcePort:ap,target:b.id,targetPort:bp});
+ const director=add('manager','Giám đốc điều phối',520,70,{prompt:'Bạn là Giám đốc điều phối, báo cáo trực tiếp cho Tổng Giám đốc là người dùng. Nhận yêu cầu; xác định đầu ra, lập kế hoạch và giao việc cho các Trưởng phòng được kết nối. Không tự nhận là Tổng Giám đốc. Chỉ gọi nhân sự và công cụ thực sự có trong sơ đồ. Mọi báo cáo phải phân biệt công việc hoàn tất, đang chờ và bị chặn. Không bịa dữ liệu, ảnh, video, nguồn hoặc biên nhận. Nếu chưa đủ đầu vào, nêu rõ phần thiếu và vẫn hoàn tất các phần có thể làm. Nếu có previousRun, không lặp lại thao tác đã có biên nhận; dùng phản hồi để điều chỉnh phần còn thiếu. Không công bố, gửi email hoặc chi tiền ngoài quyền của lượt chạy.',style:'Chuyên nghiệp, tự nhiên, rõ ràng. Dùng tiếng Việt khi người dùng giao việc bằng tiếng Việt.',process:'Phân tích → lập kế hoạch → phân công → tổng hợp bằng chứng → kiểm tra → báo cáo.',reporting:'Tóm tắt điều hành; kết quả theo phòng ban; file và nguồn thực tế; hạn chế; việc cần Tổng Giám đốc quyết định.',delegation:'Chỉ giao cho cấp dưới trực tiếp. Trưởng phòng quản lý nhân viên của mình. Phản hồi và báo cáo đi ngược đúng chuỗi quản lý.',maxSteps:4});people.push(director);
+ let reviewer;if(review){reviewer=add('reviewer','Kiểm soát chất lượng độc lập',1560,340,{prompt:'Đánh giá báo cáo Trưởng phòng được gửi cho Giám đốc điều phối: có trả lời đúng yêu cầu không, có bằng chứng không, dữ liệu/file/xuất bản có xác nhận thực tế không. Không giả kiểm tra file hoặc nội dung chưa được cung cấp. Từ chối tuyên bố hoàn tất không có căn cứ; nêu lỗi và đề nghị sửa rõ ràng.'});link(director,'tasks',reviewer,'manager');link(reviewer,'assessment',director,'assessment');people.push(reviewer);}
+ for(const [index,d]of selected.entries()){
+  const x=100+index*1250;
+  const head=add('leader','Trưởng phòng '+d.short,x,360,{prompt:'Bạn phụ trách '+d.name+'. '+d.mission+' Chia việc cho nhân viên trực tiếp, dùng các công cụ được kết nối, kiểm tra kết quả và báo cáo lại Giám đốc điều phối. Đầu ra mong đợi: '+d.deliverables.join('; ')+'. Giữ nguyên bằng chứng, đường dẫn nguồn và các hạn chế. Không tuyên bố thao tác bên ngoài đã thành công nếu chưa có biên nhận.',maxSteps:4});head.config.departmentId=d.id;leaders.push(head.id);link(director,'tasks',head,'manager');if(reviewer)link(head,'report',reviewer,'observe');people.push(head);
+  for(const [pi,[role,title]]of d.people.entries()){
+   const staff=add('agent',title,x+pi*530,700,{role,prompt:'Bạn là '+title+' thuộc '+d.name+'. Chỉ nhận việc từ Trưởng phòng trực tiếp và trả kết quả cho người giao. '+d.mission+' Đưa ra kết quả cụ thể, nguồn và điều chưa thể xác nhận. Khi thiếu dữ liệu hoặc quyền công cụ, báo bị chặn thay vì giả thực hiện.',maxSteps:3});staff.config.departmentId=d.id;link(head,'tasks',staff,'manager');people.push(staff);
+  }
+  // Tools are direct tasks of the department head: role scopes remain enforced.
+  for(const [ti,type]of d.tools.entries()){
+   const t=add(type,undefined,x+ti*300,1060);if(!t.name)t.name=type;t.config.departmentId=d.id;link(head,'tasks',t,'manager');
+  }
+ }
+ for(const n of people){const m=add('model',provider+' · '+n.name,n.x+40,n.y+170,{provider,model});link(m,'model',n,'model');}
+ return {schemaVersion:1,nodes,edges,settings:{company:{version:1,departmentIds:selected.map(d=>d.id),ceo:'human',directorId:director.id,requiredLeaderIds:leaders,requiresQuality:review},organization:{enabled:true,version:1,maxModelCalls:32,parallelTasks:2,timeoutSeconds:480,maxLeaderRevisions:1}}};
+}

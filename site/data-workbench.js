@@ -1,3 +1,4 @@
+import {chartReport,qualityCheck} from './company-tools.js';
 /** Deterministic transformations shared by real server runs and browser previews. */
 export const pathAt=(v,path)=>String(path||'').split('.').filter(Boolean).reduce((x,k)=>['__proto__','prototype','constructor'].includes(k)?undefined:x?.[k],v);
 const maximum=2000;
@@ -24,7 +25,7 @@ export function exportData(value,{title='Report',format='csv'}={}){
  else throw Error('Unsupported export format.');
  if(text.length>70000)throw Error('Report exceeds 70 KB; filter or aggregate the input first.');return {title,format,rowCount:table.length,report:text,files:[{name:String(title).replace(/[^\p{L}\p{N}_-]/gu,'_').slice(0,80)+'.'+extension,content:text,type}]};
 }
-export function transformData(type,input,config={}){
+export function transformData(type,input,config={}){if(type==='chart_report')return chartReport(input,config);if(type==='quality_check')return qualityCheck(input,config);if(type==='browser_link'){const url=new URL(config.url.replace(/\{\{input\.([\w.]+)\}\}/g,(_,path)=>String(pathAt(input,path)||'')));if(url.protocol!=='https:'||url.username||url.password)throw Error('Use an HTTPS page without credentials.');return {...input,links:[{url:url.href,label:'Mở trang trong trình duyệt'}],requiresUserGesture:true};}
  if(type==='csv_read'){const data=parseCSV(pathAt(input,config.field),config);return {rows:data,rowCount:data.length};}
  if(type==='rows_export')return exportData(pathAt(input,config.field)??input,config);
  if(type==='rows_join'){
