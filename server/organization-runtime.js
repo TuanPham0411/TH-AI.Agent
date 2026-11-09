@@ -17,6 +17,7 @@ export async function executeOrganization(graph,rawInput,{signal,allowPaid,invok
  const maxCalls=Math.max(2,Math.min(40,Number(graph.settings?.organization?.maxModelCalls)||24));
  const input=rawInput&&typeof rawInput==='object'&&!Array.isArray(rawInput)?{...rawInput}:rawInput,entry=typeof input?._studioEntryNodeId==='string'?nodes.get(input._studioEntryNodeId):root;if(input&&typeof input==='object')delete input._studioEntryNodeId;
  if(!entry||entry.enabled===false||!portsFor(entry,catalog).inputs.user)throw Error('The selected task recipient does not accept direct user commands.');
+ if(graph.settings?.company?.planningVersion===1&&entry.id!==root.id)throw Error('Generated company workflows accept CEO requests only through the Coordinating Director.');
  if(entry.id!==root.id&&!portsFor(entry,catalog).outputs.user)throw Error('Enable this block’s user result channel before direct execution.');
  const check=()=>{if(signal?.aborted)throw Error('Run cancelled.');if(++sequence>160)throw Error('Organization execution exceeded 160 bounded steps.');};
  const children=node=>links.filter(l=>l.parent===node.id).map(l=>nodes.get(l.child)).filter(n=>n?.enabled!==false);
