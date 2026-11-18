@@ -188,11 +188,16 @@ export class CompanyRunner {
                 title,
                 instructions: String(instructions || "").slice(0, 500),
               })),
-            connections: connections.map(({ id, name, kind }) => ({
-              id,
-              name,
-              kind,
-            })),
+            connections: connections.map(
+              ({ id, name, kind, execution, unattended, verifiedAt }) => ({
+                id,
+                name,
+                kind,
+                execution,
+                unattended,
+                verifiedAt,
+              }),
+            ),
           },
           assistantSystem,
         );
@@ -283,6 +288,10 @@ export class CompanyRunner {
                   description,
                   effect,
                   mediaType,
+                  execution,
+                  unattended,
+                  verifiedAt,
+                  pythonImageReady,
                 }) => ({
                   id,
                   name,
@@ -293,6 +302,10 @@ export class CompanyRunner {
                   description,
                   effect,
                   mediaType,
+                  execution,
+                  unattended,
+                  verifiedAt,
+                  pythonImageReady,
                 }),
               ),
               recipe: recipe
