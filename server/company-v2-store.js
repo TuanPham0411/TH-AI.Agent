@@ -31,9 +31,28 @@ export class CompanyStore {
   async connections(db = this.pool) {
     return (
       await db.query(
-        "SELECT id,revision,value FROM company_connections ORDER BY updated_at DESC LIMIT 100",
+        "SELECT c.id,c.revision,c.value,d.capabilities,d.last_seen,d.revoked_at FROM company_connections c LEFT JOIN company_devices d ON c.value->>'deviceId'=d.id::text ORDER BY c.updated_at DESC LIMIT 100",
       )
-    ).rows.map((r) => ({ ...r.value, id: r.id, revision: r.revision }));
+    ).rows.map((r) => {
+      const value = { ...r.value, id: r.id, revision: r.revision };
+      if (value.transport === "device") {
+        const cap = r.capabilities?.actions?.find((a) => a.id === value.action),
+          online =
+            !r.revoked_at &&
+            !!r.last_seen &&
+            Date.now() - new Date(r.last_seen).getTime() < 45000;
+        value.online = online;
+        value.execution = r.capabilities?.execution || "unverified";
+        value.unattended =
+          online &&
+          value.execution === "server" &&
+          r.capabilities?.unattended === true &&
+          cap?.unattended === true;
+        if (!cap || cap.effect !== value.effect || r.revoked_at)
+          value.verifiedAt = null;
+      }
+      return value;
+    });
   }
   async recipes() {
     return (
@@ -94,7 +113,7 @@ export class CompanyStore {
       [randomUUID(), job.id, "assistant", text],
     );
   }
-  async enqueue({ requestId, text }) {
+  async enqueue({ requestId, text, recipeId = null }) {
     try {
       return await this.tx(async (db) => {
         const old = (
@@ -110,6 +129,7 @@ export class CompanyStore {
           state: "queued",
           phase: "assistant",
           request: text,
+          ...(recipeId ? { recipeId } : {}),
           language: /[àáạảãăâđêôơư]/i.test(text) ? "vi" : "en",
           title: text.slice(0, 90),
           calls: 0,

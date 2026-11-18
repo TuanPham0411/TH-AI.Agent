@@ -1,0 +1,603 @@
+import { connectionTypes, connectionGroups } from "./company-connections.js";
+export function createConnectionStudio({
+  api,
+  sendJSON,
+  modal,
+  field,
+  el,
+  button,
+  refresh,
+  notice,
+  getData,
+}) {
+  let devices = [];
+  function open(title, build) {
+    document.querySelector("#modal").close();
+    modal(title, build);
+    document.querySelector("#modal").classList.add("connection-dialog");
+  }
+  const badge = (text, cls = "") => el("span", text, "connector-badge " + cls);
+  function note(host, text, cls = "connector-help") {
+    host.append(el("p", text, cls));
+  }
+  async function loadDevices() {
+    devices = (await api("company/devices")).devices;
+  }
+  async function list() {
+    open("Your working environment", (host) => {
+      note(
+        host,
+        "Different tools need different credentials, permissions and places to run. Configure each once; your assistant uses the verified capability.",
+      );
+      const bar = el("div", "", "connection-toolbar");
+      bar.append(
+        button("Pair / manage a computer", () => deviceManager(), "ink-button"),
+        button("＋ Add a connection", () => gallery(), "quiet-button"),
+      );
+      host.append(bar);
+      const connections = getData()?.connections || [];
+      for (const group of connectionGroups) {
+        const items = connections.filter(
+          (c) => connectionTypes[c.kind]?.group === group,
+        );
+        if (!items.length) continue;
+        host.append(el("h3", group, "connector-group-title"));
+        const grid = el("div", "", "connected-grid");
+        for (const c of items) {
+          const def = connectionTypes[c.kind],
+            card = el("article", "", "connected-card");
+          const top = el("div", "", "connector-card-top");
+          top.append(
+            el("span", def.icon, "connector-icon"),
+            el("h4", c.name),
+            badge(
+              c.verifiedAt || c.check?.verified ? "Checked" : "Not checked",
+              c.verifiedAt || c.check?.verified ? "verified" : "",
+            ),
+          );
+          card.append(
+            top,
+            el("p", def.title + " · " + c.id),
+            el(
+              "p",
+              c.kind === "bridge"
+                ? (c.execution || "unverified") +
+                    " · " +
+                    (c.unattended
+                      ? "server automation eligible"
+                      : "online/manual use only")
+                : c.requestPath || c.accountId || c.database || def.summary,
+            ),
+          );
+          const controls = el("div", "", "connection-toolbar");
+          controls.append(
+            button("Configure", () => form(c), "quiet-button"),
+            button(
+              "Test connection",
+              async () => {
+                const result = await sendJSON(
+                  "company/connections/" + c.id + "/check",
+                  {},
+                );
+                notice(
+                  result.note ||
+                    (result.execution === "server" && result.unattended
+                      ? "Server verified."
+                      : "Computer verified; desktop tools need this computer online."),
+                );
+                await refresh();
+                await list();
+              },
+              "quiet-button",
+            ),
+          );
+          card.append(controls);
+          grid.append(card);
+        }
+        host.append(grid);
+      }
+      if (!connections.length) {
+        note(
+          host,
+          "No tools connected yet. Choose the service you actually use.",
+        );
+        renderGallery(host);
+      }
+    });
+  }
+  function renderGallery(host) {
+    for (const group of connectionGroups) {
+      host.append(el("h3", group, "connector-group-title"));
+      const grid = el("div", "", "connector-gallery");
+      for (const [kind, d] of Object.entries(connectionTypes).filter(
+        ([, d]) => d.group === group,
+      )) {
+        const card = button("", () => form(null, { kind }), "connector-choice");
+        card.append(
+          el("span", d.icon, "connector-icon"),
+          el("strong", d.title),
+          el("span", d.summary),
+        );
+        grid.append(card);
+      }
+      host.append(grid);
+    }
+  }
+  function gallery() {
+    open("Choose a connection", (host) => {
+      note(
+        host,
+        "Choose a service to see its own setup, required permissions and supported operations.",
+      );
+      renderGallery(host);
+    });
+  }
+  async function form(existing = null, need = {}) {
+    if ((existing?.kind || need.kind) === "bridge") await loadDevices();
+    open(existing ? "Configure " + existing.name : "Connect a tool", (host) => {
+      const options = Object.entries(connectionTypes).map(([k, d]) => [
+          k,
+          d.title,
+        ]),
+        initial =
+          existing?.kind || (connectionTypes[need.kind] ? need.kind : "odbc");
+      const shell = el("div", "", "connector-form-layout"),
+        main = el("div", "", "connector-form-main"),
+        aside = el("aside", "", "connector-guide");
+      shell.append(main, aside);
+      host.append(shell);
+      const kind = field(main, "Connection type", initial, { options });
+      if (existing) kind.disabled = true;
+      const identity = el("div", "", "connector-field-grid");
+      main.append(identity);
+      const id = field(
+        identity,
+        "Connection ID",
+        existing?.id ||
+          String(need.name || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, "")
+            .slice(0, 60),
+      );
+      if (existing) id.disabled = true;
+      const name = field(
+        identity,
+        "Display name",
+        existing?.name || need.name || "",
+      );
+      const conditional = el("div", "", "connector-settings");
+      main.append(conditional);
+      let fields = {},
+        transport,
+        device;
+      function details() {
+        conditional.replaceChildren();
+        aside.replaceChildren();
+        fields = {};
+        const def = connectionTypes[kind.value];
+        aside.append(
+          el("span", def.icon, "connector-icon large"),
+          el("h3", def.title),
+        );
+        note(aside, def.summary);
+        aside.append(el("h4", "What you need"));
+        note(aside, def.auth);
+        aside.append(el("h4", "Where it runs"));
+        note(
+          aside,
+          kind.value === "bridge"
+            ? "On your paired computer. It must be online and awake. Portability assessment can move suitable Python tools to a verified server."
+            : "On the server, using the saved account and network route. Your browser tab is not the worker.",
+        );
+        aside.append(el("h4", "Private credentials"));
+        note(
+          aside,
+          "Saved in the server vault. Existing passwords/tokens are never sent back to this form or included in model context. Blank private fields preserve saved values.",
+        );
+        if (def.docs) {
+          const a = el("a", "Official setup / permissions →");
+          a.href = def.docs;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          aside.append(a);
+        }
+        if (kind.value === "bridge") {
+          bridgeFields();
+          return;
+        }
+        const grid = el("div", "", "connector-field-grid");
+        conditional.append(grid);
+        for (const spec of def.fields) {
+          const control = field(
+            grid,
+            spec.label,
+            spec.private
+              ? ""
+              : (existing?.[spec.key] ??
+                  spec.default ??
+                  spec.options?.[0]?.[0] ??
+                  ""),
+            {
+              secret: spec.secret,
+              options: spec.options,
+              type: spec.type || "text",
+              rows: spec.rows,
+            },
+          );
+          control.dataset.configField = spec.key;
+          if (spec.private && existing)
+            control.placeholder = "Saved · leave blank to preserve";
+          else if (spec.placeholder) control.placeholder = spec.placeholder;
+          if (spec.type === "checkbox")
+            control.checked = !!(existing?.[spec.key] ?? spec.default);
+          if (spec.required && !existing) control.required = true;
+          fields[spec.key] = { control, spec };
+        }
+        if (def.scheme) {
+          const advanced = el("details", "", "connector-advanced");
+          advanced.append(
+            el("summary", "Advanced / preserve an existing driver connection"),
+          );
+          note(
+            advanced,
+            "For an older URI-only connection, leave host fields empty to preserve it. Providing host settings rebuilds the driver connection with saved private fields.",
+          );
+          const control = field(
+            advanced,
+            "Private driver URI / JSON override",
+            "",
+            { secret: true },
+          );
+          control.placeholder = existing
+            ? "Saved · leave blank to preserve"
+            : "";
+          fields.connectionString = {
+            control,
+            spec: { key: "connectionString", private: true },
+          };
+          conditional.append(advanced);
+        }
+        if (kind.value === "network") {
+          const updateAuth = () => {
+            for (const key of ["username", "key"]) {
+              const n = fields[key].control.closest("label");
+              n.hidden =
+                fields.auth.control.value === "none" ||
+                (key === "username" && fields.auth.control.value !== "basic");
+            }
+          };
+          fields.auth.control.onchange = updateAuth;
+          updateAuth();
+        }
+      }
+      function bridgeFields() {
+        transport = field(
+          conditional,
+          "Computer connection",
+          existing?.transport ||
+            (existing && !existing.deviceId ? "https" : "device"),
+          {
+            options: [
+              ["device", "Paired device · outbound link"],
+              ["https", "Existing HTTPS bridge"],
+            ],
+          },
+        );
+        const body = el("div");
+        conditional.append(body);
+        function draw() {
+          body.replaceChildren();
+          fields = {};
+          if (transport.value === "device") {
+            const active = devices.filter((d) => !d.revoked);
+            device = field(
+              body,
+              "Paired computer",
+              existing?.deviceId || active[0]?.id || "",
+              {
+                options: active.length
+                  ? active.map((d) => [
+                      d.id,
+                      d.name + " · " + (d.online ? "online" : "offline"),
+                    ])
+                  : [["", "Pair a computer first"]],
+              },
+            );
+            body.append(
+              button(
+                "Pair / manage a computer",
+                () => deviceManager(),
+                "quiet-button",
+              ),
+            );
+            const target = el("div");
+            body.append(target);
+            function actions() {
+              target.replaceChildren();
+              const d = active.find((d) => d.id === device.value),
+                caps = d?.capabilities?.actions || [];
+              note(
+                target,
+                d
+                  ? (d.online ? "Computer online. " : "Computer offline. ") +
+                      (d.capabilities.fullControl
+                        ? "Full account-level control granted locally."
+                        : "Only configured local actions are available.")
+                  : "Pair and start the device agent, then refresh to load its actions.",
+              );
+              const action = field(
+                target,
+                "Approved action ID",
+                existing?.action || caps[0]?.id || "",
+                {
+                  options: caps.length
+                    ? caps.map((a) => [a.id, a.id])
+                    : [["", "No action reported yet"]],
+                },
+              );
+              const desc = field(
+                target,
+                "Action skill / input description",
+                existing?.description ||
+                  caps.find((a) => a.id === action.value)?.description ||
+                  "",
+                { rows: 4 },
+              );
+              const effect = field(
+                target,
+                "Action effect",
+                caps.find((a) => a.id === action.value)?.effect || "write",
+                {
+                  options: [
+                    ["read", "Read-only"],
+                    ["write", "Writes / controls this computer"],
+                  ],
+                },
+              );
+              effect.disabled = true;
+              action.onchange = () => {
+                const a = caps.find((a) => a.id === action.value);
+                desc.value = a?.description || "";
+                effect.value = a?.effect || "write";
+              };
+              fields.action = { control: action, spec: { key: "action" } };
+              fields.description = {
+                control: desc,
+                spec: { key: "description" },
+              };
+              fields.effect = { control: effect, spec: { key: "effect" } };
+            }
+            device.onchange = actions;
+            actions();
+          } else {
+            for (const spec of [
+              { key: "baseUrl", label: "HTTPS gateway URL", type: "url" },
+              { key: "action", label: "Approved action ID" },
+              {
+                key: "description",
+                label: "Action skill / input description",
+                rows: 4,
+              },
+              {
+                key: "effect",
+                label: "Action effect",
+                options: [
+                  ["read", "Read-only"],
+                  ["write", "Writes / controls a local tool"],
+                ],
+              },
+              {
+                key: "key",
+                label: "Private access token",
+                private: true,
+                secret: true,
+              },
+            ]) {
+              const control = field(
+                body,
+                spec.label,
+                spec.private ? "" : existing?.[spec.key] || "",
+                spec,
+              );
+              if (spec.private && existing)
+                control.placeholder = "Saved · leave blank to preserve";
+              fields[spec.key] = { control, spec };
+            }
+            const help = el("a", "HTTPS bridge setup →");
+            help.href = "/bridge-setup.html";
+            help.target = "_blank";
+            help.rel = "noopener";
+            body.append(help);
+          }
+          const allow = field(
+            body,
+            "Allow this assistant to invoke this approved action without asking each time",
+            "",
+            { type: "checkbox" },
+          );
+          allow.checked = !!existing?.allowWrites;
+          fields.allowWrites = { control: allow, spec: { key: "allowWrites" } };
+        }
+        transport.onchange = draw;
+        draw();
+      }
+      kind.onchange = async () => {
+        if (kind.value === "bridge") await loadDevices();
+        details();
+      };
+      details();
+      const status = el("p", "", "setup-status"),
+        controls = el("div", "", "connection-toolbar");
+      main.append(status, controls);
+      controls.append(
+        button(
+          "Save secure connection",
+          async () => {
+            const body = {
+              kind: kind.value,
+              name: name.value,
+              revision: existing?.revision || 0,
+              secret: {},
+            };
+            for (const [key, { control, spec }] of Object.entries(fields)) {
+              const value =
+                control.type === "checkbox" ? control.checked : control.value;
+              if (spec.private) body.secret[key] = value;
+              else body[key] = value;
+            }
+            if (kind.value === "bridge") {
+              body.transport = transport.value;
+              if (transport.value === "device") body.deviceId = device.value;
+            }
+            await sendJSON(
+              "company/connections/" + encodeURIComponent(id.value),
+              body,
+              "PUT",
+            );
+            for (const { control, spec } of Object.values(fields))
+              if (spec.private) control.value = "";
+            status.textContent =
+              "Saved securely. Continue the waiting work from your assistant.";
+            await refresh();
+            existing = getData().connections.find((c) => c.id === id.value);
+            id.disabled = true;
+          },
+          "ink-button",
+        ),
+        button(
+          "Test saved connection",
+          async () => {
+            status.textContent = "Testing the saved connection…";
+            try {
+              const r = await sendJSON(
+                "company/connections/" +
+                  encodeURIComponent(id.value) +
+                  "/check",
+                {},
+              );
+              status.textContent =
+                r.note ||
+                (r.execution === "server" && r.unattended
+                  ? "Server verified for unattended work."
+                  : "Computer verified. Desktop tools need this computer online.");
+              await refresh();
+              existing = getData().connections.find((c) => c.id === id.value);
+            } catch (e) {
+              status.textContent = e.message;
+            }
+          },
+          "quiet-button",
+        ),
+        button("All connections", () => list(), "text-button"),
+      );
+    });
+  }
+  async function deviceManager() {
+    await loadDevices();
+    open("Connect your computer", (host) => {
+      note(
+        host,
+        "The device agent makes an outbound HTTPS connection to this server. No router port-forwarding or inbound laptop certificate is required. It runs with your local account permissions; full control adds code execution and file access. Desktop Office requires installed Office and a logged-in Windows session.",
+      );
+      for (const d of devices) {
+        const card = el("article", "", "device-card");
+        card.append(
+          el("strong", d.name),
+          badge(
+            d.revoked ? "Revoked" : d.online ? "Online" : "Offline",
+            d.online ? "verified" : "",
+          ),
+          el(
+            "p",
+            (d.capabilities.platform || "Awaiting agent") +
+              " · " +
+              (d.capabilities.fullControl
+                ? "Full computer control"
+                : "Configured actions only") +
+              " · " +
+              (d.capabilities.actions?.length || 0) +
+              " actions",
+          ),
+        );
+        if (!d.revoked)
+          card.append(
+            button(
+              "Use this computer",
+              () => form(null, { kind: "bridge" }),
+              "quiet-button",
+            ),
+            button(
+              "Revoke access",
+              async () => {
+                await sendJSON("company/devices/" + d.id + "/revoke", {});
+                await deviceManager();
+              },
+              "text-button",
+            ),
+          );
+        host.append(card);
+      }
+      const section = el("section", "", "pairing-section");
+      section.append(el("h3", "Pair a Windows laptop"));
+      const name = field(section, "Computer name", "");
+      const result = el("div");
+      section.append(
+        button(
+          "Create pairing token",
+          async () => {
+            const created = await sendJSON("company/devices", {
+              name: name.value,
+            });
+            result.replaceChildren();
+            note(
+              result,
+              "Copy this token now; it is shown only once. The installer asks for it privately. Revoking the device invalidates it.",
+            );
+            const token = el("code", created.token, "pairing-token");
+            result.append(token);
+            const command = el(
+              "pre",
+              'Invoke-WebRequest -UseBasicParsing "' +
+                location.origin +
+                '/install-th-device.ps1" -OutFile "$env:TEMP\\install-th-device.ps1"\n& "$env:TEMP\\install-th-device.ps1" -Server "' +
+                location.origin +
+                '" -FullControl',
+            );
+            result.append(
+              el("h4", "Run in PowerShell on your laptop"),
+              command,
+            );
+            note(
+              result,
+              "Python 3.10+ must be installed. The installer stores its token under your Windows account, adds a logon startup task and starts the agent. Omit -FullControl for configured actions only. It does not install Python, request administrator elevation or access your computer before you run it.",
+            );
+            const a = el("a", "Download / inspect the installer");
+            a.href = "/install-th-device.ps1";
+            a.download = "install-th-device.ps1";
+            result.append(
+              a,
+              button(
+                "Agent started — refresh devices",
+                () => deviceManager(),
+                "ink-button",
+              ),
+            );
+          },
+          "ink-button",
+        ),
+        result,
+      );
+      host.append(
+        section,
+        button("Refresh devices", () => deviceManager(), "quiet-button"),
+        button("Back to connections", () => list(), "text-button"),
+      );
+      const guide = el("a", "Other systems / HTTPS bridge instructions →");
+      guide.href = "/bridge-setup.html";
+      guide.target = "_blank";
+      guide.rel = "noopener";
+      host.append(guide);
+    });
+  }
+  return { list, form, gallery, deviceManager };
+}

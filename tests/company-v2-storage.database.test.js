@@ -66,12 +66,24 @@ test(
         "INSERT INTO company_recipes(id,value) VALUES($1,$2)",
         [randomUUID(), { title: "query recipe" }],
       );
+      const deviceId = randomUUID(),
+        generation = randomUUID();
+      await wrapped.query(
+        "INSERT INTO company_devices(id,name,token_hash,generation) VALUES($1,$2,$3,$4)",
+        [deviceId, "Durable laptop", "test-hash", generation],
+      );
+      await wrapped.query(
+        "INSERT INTO company_device_tasks(id,device_id,generation,action,input,state,deadline) VALUES($1,$2,$3,'list_folder',$4,'queued',now()+interval '1 minute')",
+        [randomUUID(), deviceId, generation, { root: "home" }],
+      );
       for (const table of [
         "company_settings",
         "company_jobs",
         "company_messages",
         "company_connections",
         "company_recipes",
+        "company_devices",
+        "company_device_tasks",
       ])
         assert(tables.has(table), "Missing durable capture for " + table);
       deny = true;

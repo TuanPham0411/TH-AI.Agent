@@ -1,3 +1,5 @@
+import { createExampleStudio } from "./workflow-example-studio.js";
+import { createConnectionStudio } from "./company-connection-studio.js";
 import { safeWorkLink } from "./company-v2-links.js";
 import { defaultCompanySettings, jobStates } from "./company-v2-model.js";
 import { companyScene } from "./company-v2-scene.js";
@@ -28,8 +30,14 @@ const state = {
     sending: false,
     reply: null,
     selectedStep: null,
+    zoom: 1,
+    fit: true,
+    forceFit: false,
+    example: null,
+    requestRecipeId: null,
   },
   root = document.querySelector("#app");
+const refreshWaiters = [];
 let polling = false,
   pollTimer;
 document.documentElement.dataset.theme = "light";
@@ -57,6 +65,7 @@ function notice(text) {
 }
 function modal(title, build) {
   const d = document.querySelector("#modal");
+  d.className = "";
   d.replaceChildren();
   const h = el("header");
   h.append(
@@ -97,10 +106,30 @@ function field(
   host.append(l);
   return input;
 }
+function receiptElement(receipt) {
+  const url = safeWorkLink(receipt.url, location.origin);
+  const node = el(
+    url ? "a" : "p",
+    url
+      ? "Open confirmed publication →"
+      : (receipt.platform || "Service") +
+          " · confirmed receipt " +
+          (receipt.receipt || receipt.id),
+    "service-receipt",
+  );
+  if (url) {
+    node.href = url;
+    node.target = "_blank";
+    node.rel = "noopener noreferrer";
+  }
+  return node;
+}
 function jobLabel(job) {
   return job?.steps?.some((step) => step.state === "waiting_external")
     ? "Visual generation in progress"
-    : jobStates[job?.state] || "Standing by";
+    : job?.state === "example"
+      ? "Example · setup required"
+      : jobStates[job?.state] || "Standing by";
 }
 function current() {
   return (
@@ -110,6 +139,7 @@ function current() {
   );
 }
 function render() {
+  const canvasScroll = document.querySelector(".work-canvas")?.scrollTop || 0;
   const focused = document.activeElement?.id === "assistant-input",
     selection = focused
       ? [
@@ -117,7 +147,16 @@ function render() {
           document.activeElement.selectionEnd,
         ]
       : null;
-  const selected = current(),
+  const selected = state.example
+      ? {
+          ...state.example,
+          recipeId: state.example.id,
+          id: null,
+          state: "example",
+          phase: "example",
+          steps: state.example.procedure || [],
+        }
+      : current(),
     replying =
       state.reply === true ||
       (state.reply === null &&
@@ -135,6 +174,7 @@ function render() {
       "TH",
       () => {
         state.selected = null;
+        state.example = null;
         render();
       },
       "desk-mark",
@@ -153,6 +193,7 @@ function render() {
   if (state.owner)
     nav.append(
       button("Connections", () => connectionList(), "quiet-button"),
+      button("Examples", () => exampleStudio.library(), "quiet-button"),
       button("Company setup", () => setup(), "quiet-button"),
     );
   nav.append(
@@ -237,6 +278,8 @@ function render() {
         button(
           "View this work ↗",
           () => {
+            state.example = null;
+            state.requestRecipeId = null;
             state.selected = m.job_id;
             history.replaceState(null, "", "#work/" + m.job_id);
             state.reply = null;
@@ -261,13 +304,8 @@ function render() {
         a.download = f.name;
         files.append(a);
       }
-      for (const receipt of linked.result.receipts || []) {
-        const a = el("a", "Open confirmed publication ↗");
-        a.href = safeWorkLink(receipt.url, location.origin) || "#";
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        files.append(a);
-      }
+      for (const receipt of linked.result.receipts || [])
+        files.append(receiptElement(receipt));
       for (const assessment of linked.result.assessments || []) {
         const card = el("div", "", "assessment-result");
         card.append(
@@ -523,11 +561,14 @@ function render() {
         const response = await sendJSON("company/messages", {
           text: state.draft,
           requestId: state.requestId,
+          ...(state.requestRecipeId ? { recipeId: state.requestRecipeId } : {}),
         });
         state.selected = response.job.id;
         history.replaceState(null, "", "#work/" + state.selected);
       }
       state.draft = "";
+      state.example = null;
+      state.requestRecipeId = null;
       state.requestId = null;
       state.reply = null;
       await refresh();
@@ -555,7 +596,15 @@ function render() {
   );
   const recipe = data?.recipes.find((r) => r.id === selected?.recipeId);
   const operations = el("div", "", "workflow-controls");
-  if (recipe)
+  if (state.example)
+    operations.append(
+      button(
+        "Workflow examples",
+        () => exampleStudio.library(),
+        "quiet-button",
+      ),
+    );
+  if (recipe && !state.example)
     operations.append(
       button(
         recipe.automation?.enabled ? "Automation on" : "Automation",
@@ -563,7 +612,7 @@ function render() {
         "quiet-button",
       ),
     );
-  if (selected) {
+  if (selected?.id) {
     const tab = el("a", "Open work tab →", "quiet-button");
     tab.href = "/#work/" + selected.id;
     tab.target = "_blank";
@@ -578,6 +627,8 @@ function render() {
     const b = button(
       job.title,
       () => {
+        state.example = null;
+        state.requestRecipeId = null;
         state.selected = job.id;
         history.replaceState(null, "", "#work/" + job.id);
         state.selectedStep = null;
@@ -590,14 +641,105 @@ function render() {
     list.append(b);
   }
   if (list.childNodes.length) work.append(list);
+  const viewBar = el("div", "", "flow-toolbar");
+  const counts = el("div", "", "flow-progress");
+  counts.append(
+    el(
+      "strong",
+      (selected?.steps.filter((s) => s.state === "completed").length || 0) +
+        " / " +
+        (selected?.steps.length || 0),
+    ),
+    el("span", "TOOLS COMPLETED"),
+  );
+  const legend = el("div", "", "flow-legend");
+  for (const [cls, label] of [
+    ["execution", "Execution"],
+    ["data", "Mapped data"],
+    ["live", "Live signal"],
+  ])
+    legend.append(el("span", label, cls));
+  viewBar.append(
+    counts,
+    legend,
+    button(
+      "−",
+      () => {
+        state.fit = false;
+        state.zoom = Math.max(0.7, state.zoom - 0.15);
+        render();
+      },
+      "quiet-button",
+    ),
+    button(
+      Math.round(state.zoom * 100) + "%",
+      () => {
+        state.fit = false;
+        state.zoom = 1;
+        render();
+      },
+      "quiet-button",
+    ),
+    button(
+      "+",
+      () => {
+        state.fit = false;
+        state.zoom = Math.min(1.6, state.zoom + 0.15);
+        render();
+      },
+      "quiet-button",
+    ),
+  );
+  viewBar.append(
+    button(
+      "Fit",
+      () => {
+        state.fit = true;
+        state.forceFit = true;
+        render();
+      },
+      "quiet-button",
+    ),
+  );
+  work.append(viewBar);
   const canvas = el("div", "", "work-canvas");
+  canvas.style.setProperty("--flow-zoom", state.zoom);
   canvas.append(
-    companyScene(selected, (step) => {
-      state.selectedStep = step;
-      render();
-    }),
+    companyScene(
+      selected,
+      (step) => {
+        state.selectedStep = step;
+        render();
+      },
+      {
+        connections: [
+          ...(data?.connections || []),
+          ...(state.example?.slots || []).map((slot) => ({
+            id: slot.key,
+            kind: slot.kind,
+            name: slot.name + " · setup required",
+            execution: "unverified",
+          })),
+        ],
+        selectedId: state.selectedStep?.id,
+      },
+    ),
   );
   work.append(canvas);
+  const tools = el("nav", "", "workflow-tool-shelf");
+  tools.setAttribute("aria-label", "Connected workflow tools");
+  const shelfTitle = el("span", "YOUR TOOLS", "eyebrow");
+  tools.append(shelfTitle);
+  for (const c of data?.connections || []) {
+    const b = button(c.name, () => connectionForm(c), "tool-shelf-item");
+    b.prepend(el("span", c.kind.toUpperCase(), "tool-shelf-kind"));
+    tools.append(b);
+  }
+  if (state.owner)
+    tools.append(
+      button("＋ Connect tool", () => connectionList(), "tool-shelf-add"),
+    );
+  work.append(tools);
   const strip = el("div", "", "work-insight");
   if (state.selectedStep) {
     strip.append(
@@ -629,7 +771,15 @@ function render() {
     );
   } else {
     strip.append(el("span", "LIVE JOURNAL", "eyebrow"));
-    if (selected)
+    if (state.example)
+      strip.append(
+        el(
+          "p",
+          state.example.description ||
+            "Inactive workflow example. Configure connections and inputs before requesting a run.",
+        ),
+      );
+    if (selected && !state.example)
       strip.append(
         el(
           "p",
@@ -658,13 +808,8 @@ function render() {
     }
     strip.append(files);
   }
-  for (const receipt of selected?.result?.receipts || []) {
-    const a = el("a", "Open confirmed publication ↗");
-    a.href = safeWorkLink(receipt.url, location.origin) || "#";
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    strip.append(a);
-  }
+  for (const receipt of selected?.result?.receipts || [])
+    strip.append(receiptElement(receipt));
   work.append(strip);
   main.append(conversation, work);
   shell.append(main);
@@ -675,6 +820,22 @@ function render() {
   );
   shell.append(footer);
   root.append(shell);
+  const currentCanvas = document.querySelector(".work-canvas");
+  if (
+    state.fit &&
+    (!selected || selected.steps.length <= 4 || state.forceFit)
+  ) {
+    const scene = currentCanvas.querySelector("svg");
+    const h = scene.viewBox.baseVal.height;
+    scene.style.width =
+      Math.min(
+        currentCanvas.clientWidth - 24,
+        Math.max(420, ((currentCanvas.clientHeight - 20) * 1000) / h),
+      ) + "px";
+    scene.style.minWidth = "0";
+    scene.style.margin = "0 auto";
+  }
+  currentCanvas.scrollTop = canvasScroll;
   const next = document.querySelector(".conversation-log");
   next.scrollTop = bottom ? next.scrollHeight : scroll;
   if (focused) {
@@ -695,7 +856,8 @@ async function respond(action, extra = {}) {
   await refresh();
 }
 async function refresh() {
-  if (polling || !state.owner) return;
+  while (polling) await new Promise((resolve) => refreshWaiters.push(resolve));
+  if (!state.owner) return;
   polling = true;
   try {
     const next = await api("company/workspace");
@@ -712,13 +874,16 @@ async function refresh() {
       state.data = next;
       if (state.selectedStep)
         state.selectedStep =
-          current()?.steps.find((s) => s.id === state.selectedStep.id) || null;
+          (state.example?.procedure || current()?.steps || []).find(
+            (s) => s.id === state.selectedStep.id,
+          ) || null;
       render();
     }
   } catch (e) {
     notice(e.message);
   } finally {
     polling = false;
+    for (const resume of refreshWaiters.splice(0)) resume();
   }
 }
 function account() {
@@ -855,305 +1020,50 @@ function setup() {
     );
   });
 }
+const exampleStudio = createExampleStudio({
+  api,
+  sendJSON,
+  modal,
+  field,
+  el,
+  button,
+  refresh,
+  getData: () => state.data,
+  onPreview: (example) => {
+    state.example = example;
+    state.selectedStep = null;
+    state.fit = true;
+    render();
+  },
+  onUse: (recipe) => {
+    state.example = null;
+    state.requestRecipeId = recipe.id;
+    state.reply = false;
+    state.draft =
+      'Use my configured workflow "' +
+      recipe.title +
+      '". ' +
+      recipe.instructions;
+    render();
+    document.querySelector("#assistant-input").focus();
+  },
+});
+const connectionStudio = createConnectionStudio({
+  api,
+  sendJSON,
+  modal,
+  field,
+  el,
+  button,
+  refresh,
+  notice,
+  getData: () => state.data,
+});
 function connectionList() {
-  modal("Your connected tools", (host) => {
-    host.append(
-      el(
-        "p",
-        "Saved secrets never return to the browser. A configured connection still needs working network access and platform permissions.",
-      ),
-    );
-    for (const c of state.data?.connections || []) {
-      const row = el("div", "", "connection-row");
-      row.append(
-        el("strong", c.name),
-        el(
-          "span",
-          c.kind +
-            " / " +
-            c.id +
-            (c.kind === "bridge"
-              ? " · " +
-                (c.verifiedAt
-                  ? c.execution +
-                    (c.unattended ? " / unattended" : " / manual only")
-                  : "environment not verified")
-              : ""),
-        ),
-        button(
-          "Edit secure settings",
-          () => {
-            document.querySelector("#modal").close();
-            connectionForm(c);
-          },
-          "quiet-button",
-        ),
-      );
-      if (c.kind === "bridge")
-        row.append(
-          button(
-            "Verify environment",
-            async () => {
-              const v = await sendJSON(
-                "company/connections/" + c.id + "/check",
-                {},
-              );
-              notice(
-                v.execution === "server" && v.unattended
-                  ? "Server execution verified."
-                  : "Desktop/laptop tool: manual use only.",
-              );
-              await refresh();
-              document.querySelector("#modal").close();
-              connectionList();
-            },
-            "quiet-button",
-          ),
-        );
-      host.append(row);
-    }
-    host.append(
-      button(
-        "＋ Connect a tool",
-        () => {
-          document.querySelector("#modal").close();
-          connectionForm();
-        },
-        "ink-button",
-      ),
-    );
-  });
+  return connectionStudio.list();
 }
 function connectionForm(existing = null, need = {}) {
-  modal("Secure connection", (host) => {
-    host.append(
-      el(
-        "p",
-        "Credentials stay in the private vault and are never included in AI context. Facebook uses a Page access token, not your personal password. ODBC uses a read-only HTTPS gateway; its DSN/database login is managed on that gateway.",
-      ),
-    );
-    const kind = field(
-      host,
-      "Connection type",
-      existing?.kind ||
-        ([
-          "odbc",
-          "facebook",
-          "media",
-          "postgres",
-          "mysql",
-          "sqlserver",
-          "oracle",
-          "mongo",
-          "firestore",
-          "bridge",
-        ].includes(need.kind)
-          ? need.kind
-          : "odbc"),
-      {
-        options: [
-          "odbc",
-          "facebook",
-          "media",
-          "postgres",
-          "mysql",
-          "sqlserver",
-          "oracle",
-          "mongo",
-          "firestore",
-          "bridge",
-        ].map((k) => [
-          k,
-          k === "facebook"
-            ? "Facebook Page"
-            : k === "media"
-              ? "Visual media service (Replicate)"
-              : k === "bridge"
-                ? "Personal tools / local bridge"
-                : k,
-        ]),
-      },
-    );
-    if (existing) kind.disabled = true;
-    const id = field(
-        host,
-        "Connection ID",
-        existing?.id ||
-          String(need.name || "")
-            .toLowerCase()
-            .replace(/[^a-z0-9_-]/g, "")
-            .slice(0, 60),
-      ),
-      name = field(host, "Display name", existing?.name || need.name || "");
-    if (existing) id.disabled = true;
-    const conditional = el("div");
-    host.append(conditional);
-    let fields;
-    function details() {
-      conditional.replaceChildren();
-      fields = {};
-      if (["odbc", "bridge"].includes(kind.value))
-        fields.baseUrl = field(
-          conditional,
-          "HTTPS gateway URL",
-          existing?.baseUrl || "",
-        );
-      if (kind.value === "bridge") {
-        const help = el("a", "Install / configure the personal bridge →");
-        help.href = "/bridge-setup.html";
-        help.target = "_blank";
-        help.rel = "noopener";
-        conditional.append(help);
-        fields.action = field(
-          conditional,
-          "Approved action ID",
-          existing?.action || "",
-        );
-        fields.description = field(
-          conditional,
-          "Action skill / input description",
-          existing?.description || "",
-          { rows: 3 },
-        );
-        fields.effect = field(
-          conditional,
-          "Action effect",
-          existing?.effect || "read",
-          {
-            options: [
-              ["read", "Read-only"],
-              ["write", "Writes / controls a local tool"],
-            ],
-          },
-        );
-        fields.allowWrites = field(
-          conditional,
-          "Allow this assistant to invoke this approved action without asking each time",
-          "",
-          { type: "checkbox" },
-        );
-        fields.allowWrites.checked = !!existing?.allowWrites;
-      }
-      if (kind.value === "facebook") {
-        fields.accountId = field(
-          conditional,
-          "Facebook Page ID",
-          existing?.accountId || "",
-        );
-        fields.allowPublish = field(
-          conditional,
-          "Allow this assistant to publish to this Page without asking each time",
-          "",
-          { type: "checkbox" },
-        );
-        fields.allowPublish.checked = !!existing?.allowPublish;
-      }
-      if (kind.value === "media") {
-        fields.model = field(
-          conditional,
-          "Media service model (owner/model)",
-          existing?.model || "",
-        );
-        fields.mediaType = field(
-          conditional,
-          "Visual output",
-          existing?.mediaType || "text_to_image",
-          {
-            options: [
-              ["text_to_image", "Image"],
-              ["text_to_video", "Short video"],
-            ],
-          },
-        );
-        fields.allowMedia = field(
-          conditional,
-          "Allow generation charges for this connection without asking each time",
-          "",
-          { type: "checkbox" },
-        );
-        fields.allowMedia.checked = !!existing?.allowMedia;
-      }
-      const database = [
-        "postgres",
-        "mysql",
-        "sqlserver",
-        "oracle",
-        "mongo",
-      ].includes(kind.value);
-      fields.secret = field(
-        conditional,
-        database
-          ? "Read-only connection string / driver JSON"
-          : "Private access token",
-        "",
-        { secret: true },
-      );
-      fields.secret.placeholder = existing
-        ? "Saved · leave blank to preserve"
-        : "";
-      if (kind.value === "firestore")
-        fields.projectId = field(conditional, "Firebase project ID", "");
-    }
-    kind.onchange = details;
-    details();
-    const status = el("p");
-    host.append(
-      status,
-      button(
-        "Save secure connection",
-        async () => {
-          const body = {
-            kind: kind.value,
-            name: name.value,
-            revision: existing?.revision || 0,
-            secret: {},
-          };
-          for (const [k, input] of Object.entries(fields)) {
-            if (k === "secret") {
-              body.secret[
-                ["postgres", "mysql", "sqlserver", "oracle", "mongo"].includes(
-                  kind.value,
-                )
-                  ? "connectionString"
-                  : "key"
-              ] = input.value;
-            } else if (k === "projectId") body.secret.projectId = input.value;
-            else
-              body[k] = input.type === "checkbox" ? input.checked : input.value;
-          }
-          await sendJSON(
-            "company/connections/" + encodeURIComponent(id.value),
-            body,
-            "PUT",
-          );
-          fields.secret.value = "";
-          status.textContent =
-            "Saved securely. Continue the waiting work from your assistant.";
-          if (kind.value === "bridge") {
-            status.textContent =
-              "Saved. Checking the actual execution environment…";
-            try {
-              const check = await sendJSON(
-                "company/connections/" +
-                  encodeURIComponent(id.value) +
-                  "/check",
-                {},
-              );
-              status.textContent =
-                check.execution === "server" && check.unattended
-                  ? "Saved. Server execution is verified for unattended work."
-                  : "Saved. This tool depends on the laptop/desktop and is manual-only.";
-            } catch {
-              status.textContent =
-                "Saved. The bridge is not reachable/verified yet. Automation is unavailable until its environment is checked.";
-            }
-          }
-          await refresh();
-        },
-        "ink-button",
-      ),
-    );
-  });
+  return connectionStudio.form(existing, need);
 }
 function automation(recipe) {
   modal("Independent automation", (host) => {
@@ -1279,6 +1189,8 @@ async function start() {
 }
 window.addEventListener("hashchange", () => {
   if (location.hash.startsWith("#work/")) {
+    state.example = null;
+    state.requestRecipeId = null;
     state.selected = location.hash.slice(6);
     state.reply = null;
     render();

@@ -11,7 +11,10 @@ const privateAddress = (address) =>
   (net.isIP(address) === 6 && /^(fc|fd)/i.test(address));
 // Owner-configured HTTPS gateway, fixed origin/path. No model-controlled hosts,
 // redirects, proxy credentials, loopback or metadata endpoints; TLS is verified.
-export function gatewayRequest(baseUrl, { path = "/query" } = {}) {
+export function gatewayRequest(
+  baseUrl,
+  { path = "/query", method: approvedMethod = "POST" } = {},
+) {
   const approved = new URL(baseUrl);
   if (approved.protocol !== "https:" || approved.username || approved.password)
     throw Error("Configure an HTTPS gateway.");
@@ -21,7 +24,7 @@ export function gatewayRequest(baseUrl, { path = "/query" } = {}) {
       if (
         target.origin !== approved.origin ||
         target.pathname !== path ||
-        method !== "POST"
+        method !== approvedMethod
       )
         return reject(
           Error("The gateway request is outside the saved connection."),

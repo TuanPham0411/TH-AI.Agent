@@ -336,6 +336,7 @@ test("asynchronous visual generation resumes the saved job without duplicate cha
   let job = await store.get(id);
   assert.equal(job.state, "queued");
   assert.equal(job.steps[0].state, "waiting_external");
+  store.jobMap.get(id).steps[0].nextAttemptAt = Date.now() - 1;
   await runner.tick();
   job = await store.get(id);
   assert.equal(job.state, "completed");
@@ -670,4 +671,264 @@ test("workflow result and media links cannot execute a scheme supplied by a tool
     safeWorkLink("https://www.facebook.com/123_456", "https://thienha.io.vn"),
     "https://www.facebook.com/123_456",
   );
+});
+
+test("a multi-operation DAG executes independent tools in parallel, joins results, skips the inactive condition and retains both successful outcomes", async () => {
+  const store = new MemoryStore(),
+    id = store.add();
+  let active = 0,
+    peak = 0;
+  const ran = [];
+  const planned = {
+    action: "plan",
+    plan: {
+      title: "Parallel operations",
+      steps: [
+        {
+          title: "Research A",
+          skill: "research",
+          tool: "source",
+          dependsOn: [],
+          args: { url: "https://example.com/a" },
+          operation: "A",
+        },
+        {
+          title: "Research B",
+          skill: "research",
+          tool: "source",
+          dependsOn: [],
+          args: { url: "https://example.com/b" },
+          operation: "B",
+        },
+        {
+          title: "Join both",
+          skill: "data",
+          tool: "join",
+          dependsOn: ["step-1", "step-2"],
+          args: { sources: ["step-1", "step-2"], mode: "collect" },
+        },
+        {
+          title: "Condition",
+          skill: "data",
+          tool: "condition",
+          args: { left: 2, op: "gt", value: 0 },
+        },
+        {
+          title: "Selected report",
+          skill: "research",
+          tool: "source",
+          dependsOn: ["step-4"],
+          when: { step: "step-4", path: "value", op: "eq", value: true },
+          args: { url: "https://example.com/selected" },
+        },
+        {
+          title: "Inactive operation",
+          skill: "research",
+          tool: "source",
+          dependsOn: ["step-4"],
+          when: { step: "step-4", path: "value", op: "eq", value: false },
+          args: { url: "https://example.com/never" },
+        },
+        {
+          title: "Final join",
+          skill: "data",
+          tool: "join",
+          dependsOn: ["step-5", "step-6"],
+          args: { sources: ["step-5", "step-6"], mode: "collect" },
+        },
+      ],
+    },
+  };
+  const actual = createCompanyTools({ getSecret: async () => null });
+  const runner = new CompanyRunner({
+    store,
+    getSecret: async () => ({ key: "fixture" }),
+    model: async ({ slot }) =>
+      response(
+        slot === "assistant"
+          ? { reply: "I will coordinate the operations.", dispatch: true }
+          : planned,
+      ),
+    tool: async (step, context) => {
+      ran.push(step.id);
+      if (step.tool === "source") {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 30));
+        active--;
+        return { data: step.args.url, readOnly: true };
+      }
+      return actual(step, context);
+    },
+  });
+  await runner.tick();
+  const job = await store.get(id);
+  assert.equal(job.state, "completed");
+  assert.equal(peak, 2);
+  assert(!ran.includes("step-6"));
+  assert.equal(job.steps[5].state, "skipped");
+  assert.equal(job.steps[6].result.results.length, 1);
+  assert.equal(job.steps[2].result.results.length, 2);
+});
+test("parallel failure checkpoints its successful sibling and never loses or repeats an uncertain write", async () => {
+  const store = new MemoryStore(),
+    id = store.add();
+  store.connectionsList = [
+    { id: "page", kind: "facebook", allowPublish: true },
+  ];
+  let writes = 0;
+  const plan = {
+    action: "plan",
+    plan: {
+      title: "Two operations",
+      steps: [
+        {
+          title: "Successful read",
+          skill: "research",
+          tool: "source",
+          dependsOn: [],
+          args: { url: "https://example.com" },
+        },
+        {
+          title: "Uncertain publication",
+          skill: "publisher",
+          tool: "publish",
+          connection: "page",
+          dependsOn: [],
+          args: { caption: "A real intent" },
+        },
+      ],
+    },
+  };
+  const runner = new CompanyRunner({
+    store,
+    getSecret: async () => ({ key: "fixture" }),
+    model: async ({ slot }) =>
+      response(
+        slot === "assistant" ? { reply: "Starting.", dispatch: true } : plan,
+      ),
+    tool: async (step) => {
+      if (step.tool === "source") return { rows: [{ id: 1 }], rowCount: 1 };
+      writes++;
+      throw Object.assign(Error("Check Page outcome."), { uncertain: true });
+    },
+  });
+  await runner.tick();
+  const job = await store.get(id);
+  assert.equal(job.state, "uncertain");
+  assert.equal(job.steps[0].state, "completed");
+  assert.equal(job.steps[1].state, "uncertain");
+  await runner.tick();
+  assert.equal(writes, 1);
+});
+test("delay persists a wake time and releases the worker before downstream tools execute", async () => {
+  const store = new MemoryStore(),
+    id = store.add(),
+    actual = createCompanyTools({ getSecret: async () => null });
+  let reads = 0;
+  const runner = new CompanyRunner({
+    store,
+    getSecret: async () => ({ key: "fixture" }),
+    model: async ({ slot }) =>
+      response(
+        slot === "assistant"
+          ? { reply: "Starting.", dispatch: true }
+          : {
+              action: "plan",
+              plan: {
+                title: "Deferred work",
+                steps: [
+                  {
+                    title: "Delay",
+                    skill: "data",
+                    tool: "delay",
+                    args: { seconds: 10 },
+                  },
+                  {
+                    title: "Read after timer",
+                    skill: "research",
+                    tool: "source",
+                    args: { url: "https://example.com" },
+                  },
+                ],
+              },
+            },
+      ),
+    tool: async (step, ctx) => {
+      if (step.tool === "source") {
+        reads++;
+        return { data: "done" };
+      }
+      return actual(step, ctx);
+    },
+  });
+  await runner.tick();
+  let job = await store.get(id);
+  assert.equal(job.state, "queued");
+  assert.equal(job.steps[0].state, "waiting_timer");
+  assert.equal(reads, 0);
+  store.jobMap.get(id).steps[0].nextAttemptAt = Date.now() - 1;
+  await runner.tick();
+  job = await store.get(id);
+  assert.equal(job.state, "completed");
+  assert.equal(reads, 1);
+});
+
+test("a sourced report uses the same Director only after real upstream evidence exists", async () => {
+  const store = new MemoryStore(),
+    id = store.add();
+  let planning = true,
+    authored = 0;
+  const runner = new CompanyRunner({
+    store,
+    getSecret: async () => ({ key: "fixture" }),
+    model: async ({ slot, messages }) => {
+      if (slot === "assistant")
+        return response({
+          reply: "I will report actual results.",
+          dispatch: true,
+        });
+      if (planning) {
+        planning = false;
+        return response({
+          action: "plan",
+          plan: {
+            title: "Evidence report",
+            steps: [
+              {
+                title: "Read facts",
+                skill: "research",
+                tool: "source",
+                args: { url: "https://example.com" },
+              },
+              {
+                title: "Report actual facts",
+                skill: "research",
+                tool: "report",
+                args: {
+                  from: "step-1",
+                  instruction: "Report the measured count.",
+                  name: "facts.md",
+                },
+              },
+            ],
+          },
+        });
+      }
+      const input = JSON.parse(messages[0].text);
+      assert.equal(input.evidence.rowCount, 7);
+      authored++;
+      return response({ text: "The confirmed result contains 7 rows." });
+    },
+    tool: async (step) => {
+      if (step.tool === "source")
+        return { rows: [{ actual: true }], rowCount: 7 };
+      assert.equal(step.args.text, "The confirmed result contains 7 rows.");
+      return { files: [{ id: "fixture-report", name: "facts.md" }] };
+    },
+  });
+  await runner.tick();
+  assert.equal((await store.get(id)).state, "completed");
+  assert.equal(authored, 1);
+  assert.equal((await store.get(id)).calls, 3);
 });

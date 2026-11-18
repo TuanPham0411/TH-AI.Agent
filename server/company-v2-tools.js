@@ -1,3 +1,6 @@
+import { compare, validatePredicate } from "../site/company-flow.js";
+import { deviceInvoke } from "./personal-devices.js";
+import { serviceOperation } from "./company-connections.js";
 import { gatewayRequest } from "./company-v2-gateway.js";
 import { createHash } from "node:crypto";
 import { queryWorkbench, readSource } from "./workbench-runtime.js";
@@ -118,16 +121,97 @@ export function createCompanyTools({
   gateway = gatewayRequest,
   root,
 }) {
+  const bridgeGateway = (secret, path) =>
+    secret.deviceId
+      ? (_url, options) =>
+          deviceInvoke(
+            pool,
+            secret.deviceId,
+            path.split("/")[2],
+            JSON.parse(options.body).input,
+            {
+              signal: options.signal,
+              expectedEffect: [
+                "list_folder",
+                "inspect_python",
+                "export_python",
+              ].includes(path.split("/")[2])
+                ? "read"
+                : secret.effect,
+            },
+          )
+      : gateway(secret.baseUrl, { path });
   return async function execute(step, { connections, steps, signal }) {
     const connection = connections.find((c) => c.id === step.connection),
       secret = connection ? await getSecret("company_" + connection.id) : null,
       args = step.args;
+    if (step.tool === "condition") {
+      validatePredicate(args);
+      return {
+        value: compare(args.left, args.op, args.value),
+        operator: args.op,
+      };
+    }
+    if (step.tool === "delay") {
+      if (
+        !Number.isInteger(args.seconds) ||
+        args.seconds < 1 ||
+        args.seconds > 3600
+      )
+        throw Error("Delay must be 1–3,600 seconds.");
+      if (step.nextAttemptAt && Date.now() >= step.nextAttemptAt)
+        return {
+          waitedSeconds: args.seconds,
+          completedAt: new Date().toISOString(),
+        };
+      return { deferUntil: Date.now() + args.seconds * 1000 };
+    }
+    if (step.tool === "join") {
+      if (
+        !Array.isArray(args.sources) ||
+        !args.sources.length ||
+        args.sources.length > 24 ||
+        !["collect", "concat_rows"].includes(args.mode || "collect")
+      )
+        throw Error("Choose bounded source steps and a supported join mode.");
+      const source = args.sources.map((id) => steps.find((s) => s.id === id));
+      if (source.some((s) => !s || !["completed", "skipped"].includes(s.state)))
+        throw Error("Wait for all selected branches before joining them.");
+      const actual = source.filter((s) => s.state === "completed");
+      if (args.mode === "concat_rows") {
+        const rows = actual.flatMap((s) => queryRows(s.result));
+        if (rows.length > 200)
+          throw Error("Join exceeds 200 rows. Aggregate or filter first.");
+        return {
+          rows,
+          rowCount: rows.length,
+          sources: actual.map((s) => s.id),
+        };
+      }
+      return {
+        results: actual.map((s) => ({ step: s.id, result: s.result })),
+        skipped: source.filter((s) => s.state === "skipped").map((s) => s.id),
+      };
+    }
+    if (["service", "message"].includes(step.tool)) {
+      const allowed =
+        step.tool === "message"
+          ? ["messenger", "whatsapp"]
+          : ["network", "microsoft", "tiktok"];
+      if (!allowed.includes(connection?.kind))
+        throw Error("Choose a matching service connection.");
+      return serviceOperation(connection, secret, args, {
+        request,
+        gateway,
+        signal,
+      });
+    }
     if (step.tool === "browse") {
       if (connection?.kind !== "bridge" || !secret?.key)
         throw Error("Connect the computer containing the folder first.");
       const path = "/actions/list_folder/invoke",
-        result = await gateway(secret.baseUrl, { path })(
-          new URL(path, secret.baseUrl),
+        result = await bridgeGateway(secret, path)(
+          new URL(path, secret.baseUrl || "https://paired.device"),
           {
             method: "POST",
             headers: {
@@ -146,8 +230,8 @@ export function createCompanyTools({
       if (connection?.kind !== "bridge" || !secret?.key)
         throw Error("Connect the computer containing the tool folder first.");
       const path = "/actions/inspect_python/invoke";
-      const response = await gateway(secret.baseUrl, { path })(
-        new URL(path, secret.baseUrl),
+      const response = await bridgeGateway(secret, path)(
+        new URL(path, secret.baseUrl || "https://paired.device"),
         {
           method: "POST",
           headers: {
@@ -190,8 +274,8 @@ export function createCompanyTools({
       if (!sourceSecret?.key)
         throw Error("Reconnect the source computer to package this project.");
       let path = "/actions/export_python/invoke";
-      const bundle = await gateway(sourceSecret.baseUrl, { path })(
-        new URL(path, sourceSecret.baseUrl),
+      const bundle = await bridgeGateway(sourceSecret, path)(
+        new URL(path, sourceSecret.baseUrl || "https://paired.device"),
         {
           method: "POST",
           headers: {
@@ -216,8 +300,8 @@ export function createCompanyTools({
           "The project changed since assessment. Inspect it again before transfer.",
         );
       path = "/actions/stage_python/invoke";
-      const response = await gateway(secret.baseUrl, { path })(
-        new URL(path, secret.baseUrl),
+      const response = await bridgeGateway(secret, path)(
+        new URL(path, secret.baseUrl || "https://paired.device"),
         {
           method: "POST",
           headers: {
@@ -239,8 +323,8 @@ export function createCompanyTools({
         "/actions/" + encodeURIComponent(connection.action) + "/invoke";
       let result;
       try {
-        result = await gateway(secret.baseUrl, { path })(
-          new URL(path, secret.baseUrl),
+        result = await bridgeGateway(secret, path)(
+          new URL(path, secret.baseUrl || "https://paired.device"),
           {
             method: "POST",
             headers: {
