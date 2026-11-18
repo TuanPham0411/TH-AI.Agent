@@ -98,6 +98,7 @@ export async function companyFixture(databaseURL) {
                   args: {
                     caption:
                       "Some days call for a slower pace. A small breath, a little kindness, and one step at a time.",
+                    link: "https://example.com/thoughtful",
                   },
                 },
               ]

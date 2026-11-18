@@ -1,3 +1,4 @@
+import { safeWorkLink } from "../site/company-v2-links.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -10,6 +11,7 @@ import {
 import {
   payloadHash,
   resolveToolStep,
+  resolveStepValues,
   createCompanyTools,
 } from "../server/company-v2-tools.js";
 import { exportRows } from "../server/company-v2-xlsx.js";
@@ -584,4 +586,88 @@ test("both model roles receive actual tool location/capabilities without gateway
     true,
   );
   assert.equal((await store.get(id)).state, "waiting_input");
+});
+
+test("confirmed query data really reaches personal tools and export mappings reject missing or prototype fields", () => {
+  const steps = [
+    {
+      id: "step-1",
+      state: "completed",
+      result: { rows: [{ code: "10-ADU8", amount: 21 }] },
+    },
+  ];
+  const mapped = resolveToolStep(
+    {
+      tool: "bridge",
+      args: {
+        input: {
+          rows: { $step: "step-1", path: "rows" },
+          value: { $step: "step-1", path: "rows.0.amount" },
+        },
+      },
+    },
+    steps,
+  );
+  assert.equal(mapped.args.input.value, 21);
+  assert.deepEqual(mapped.args.input.rows, [{ code: "10-ADU8", amount: 21 }]);
+  mapped.args.input.rows[0].amount = 42;
+  assert.equal(steps[0].result.rows[0].amount, 21);
+  assert.throws(
+    () => resolveStepValues({ $step: "not-done" }, steps),
+    /confirmed/,
+  );
+  assert.throws(
+    () => resolveStepValues({ $step: "step-1", path: "rows.__proto__" }, steps),
+    /mapped field/,
+  );
+  assert.throws(
+    () => resolveStepValues({ $step: "step-1", path: "rows.0.missing" }, steps),
+    /mapped field/,
+  );
+});
+
+test("approval signatures survive PostgreSQL JSONB key reordering but reject changed content/destination revisions", () => {
+  const one = {
+      tool: "publish",
+      connection: "page",
+      args: { caption: "Hello", link: "https://example.com" },
+    },
+    two = {
+      tool: "publish",
+      connection: "page",
+      args: { link: "https://example.com", caption: "Hello" },
+    };
+  assert.equal(
+    payloadHash(one, { revision: 1 }),
+    payloadHash(two, { revision: 1 }),
+  );
+  assert.notEqual(
+    payloadHash(one, { revision: 1 }),
+    payloadHash(two, { revision: 2 }),
+  );
+  assert.notEqual(
+    payloadHash(one, { revision: 1 }),
+    payloadHash(
+      { ...two, args: { ...two.args, caption: "Changed" } },
+      { revision: 1 },
+    ),
+  );
+});
+
+test("workflow result and media links cannot execute a scheme supplied by a tool/model", () => {
+  for (const raw of [
+    "javascript:alert(1)",
+    "data:text/html,<script>bad</script>",
+    "file:///etc/passwd",
+    "https://user:password@example.com/",
+  ])
+    assert.equal(safeWorkLink(raw, "https://thienha.io.vn"), null);
+  assert.equal(
+    safeWorkLink("/api/studio/files/example", "https://thienha.io.vn"),
+    "https://thienha.io.vn/api/studio/files/example",
+  );
+  assert.equal(
+    safeWorkLink("https://www.facebook.com/123_456", "https://thienha.io.vn"),
+    "https://www.facebook.com/123_456",
+  );
 });

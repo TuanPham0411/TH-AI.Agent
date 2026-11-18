@@ -8,16 +8,66 @@ import { confinedFile } from "./th-storage/attachments.mjs";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { outputFiles, fileRoot } from "./studio-files.js";
+const canonical = (value) =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === "object"
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((key) => [key, canonical(value[key])]),
+        )
+      : value;
 export const payloadHash = (step, connection) =>
   createHash("sha256")
     .update(
-      JSON.stringify({
-        step: { tool: step.tool, args: step.args, connection: step.connection },
-        connectionRevision: connection?.revision || 0,
-      }),
+      JSON.stringify(
+        canonical({
+          step: {
+            tool: step.tool,
+            args: step.args,
+            connection: step.connection,
+          },
+          connectionRevision: connection?.revision || 0,
+        }),
+      ),
     )
     .digest("hex");
+export function resolveStepValues(value, steps, depth = 0) {
+  if (depth > 12) throw Error("The input mapping is too deeply nested.");
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value))
+    return value.map((item) => resolveStepValues(item, steps, depth + 1));
+  if (Object.hasOwn(value, "$step")) {
+    const source = steps.find(
+      (step) => step.id === value.$step && step.state === "completed",
+    );
+    if (!source)
+      throw Error("The mapped input needs a confirmed upstream result.");
+    let output = source.result;
+    for (const part of String(value.path || "")
+      .split(".")
+      .filter(Boolean)) {
+      if (
+        ["__proto__", "prototype", "constructor"].includes(part) ||
+        output == null ||
+        !Object.hasOwn(Object(output), part)
+      )
+        throw Error("The upstream result does not contain the mapped field.");
+      output = output[part];
+    }
+    return structuredClone(output);
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      if (["__proto__", "prototype", "constructor"].includes(key))
+        throw Error("Unsafe input mapping key.");
+      return [key, resolveStepValues(item, steps, depth + 1)];
+    }),
+  );
+}
 export function resolveToolStep(step, steps) {
+  step = { ...step, args: resolveStepValues(step.args, steps) };
   if (step.args.input?.toolFrom) {
     const staged = steps.find(
       (s) => s.id === step.args.input.toolFrom && s.state === "completed",
@@ -50,7 +100,13 @@ export function resolveToolStep(step, steps) {
   };
 }
 export function queryRows(result) {
-  const rows = result?.rows || result?.data || result;
+  const rows =
+    result?.rows ||
+    result?.data ||
+    result?.result?.rows ||
+    result?.result?.data ||
+    result?.result ||
+    result;
   if (!Array.isArray(rows))
     throw Error("The query did not return a row collection.");
   return rows;
