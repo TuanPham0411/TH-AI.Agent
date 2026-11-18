@@ -144,6 +144,17 @@ export function companyScene(job, onSelect) {
         "aria-label": s.title + " · " + s.state,
       });
     g.append(
+      n(
+        "title",
+        {},
+        s.title +
+          " · " +
+          s.state +
+          "\nPrepared runtime input: " +
+          JSON.stringify(s.inputPreview || s.args || {}).slice(0, 450),
+      ),
+    );
+    g.append(
       n("path", {
         d: `M${x} ${y}l${w - 20} -24 38 62 -${w - 20} 24Z`,
         fill:

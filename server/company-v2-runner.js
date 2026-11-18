@@ -549,6 +549,7 @@ export class CompanyRunner {
                 return;
               }
             }
+            step.inputPreview = preview(effective.args, 4000);
             step.effect = effect;
             step.state = "executing";
             await this.update(job, "Executing · " + step.title);

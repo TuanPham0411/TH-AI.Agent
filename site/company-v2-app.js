@@ -616,7 +616,8 @@ function render() {
         "pre",
         JSON.stringify(
           {
-            arguments: state.selectedStep.args,
+            arguments:
+              state.selectedStep.inputPreview || state.selectedStep.args,
             result: state.selectedStep.result,
           },
           null,
