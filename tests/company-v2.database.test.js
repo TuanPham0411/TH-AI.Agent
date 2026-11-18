@@ -242,3 +242,35 @@ test(
     );
   },
 );
+
+test(
+  "each AI role discovers account-visible models with its own vault key and never changes the saved selection",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async (t) => {
+    const f = await companyFixture(process.env.TEST_DATABASE_URL);
+    t.after(() => f.close());
+    await f.setSecret("company_ai_assistant_gemini", {
+      key: "fixture-private-assistant-model-list-key",
+    });
+    const before = (await f.json("company/workspace")).value.settings.assistant
+      .model;
+    const listed = await f.json("company/models/assistant/gemini");
+    assert.equal(listed.status, 200);
+    assert(listed.value.models.some((m) => m.id === "fixture-gemini-latest"));
+    assert(
+      !JSON.stringify(listed.value).includes(
+        "fixture-private-assistant-model-list-key",
+      ),
+    );
+    assert.equal(
+      (await f.json("company/workspace")).value.settings.assistant.model,
+      before,
+    );
+    assert.equal(f.state.calls.length, 0);
+    const missing = await f.json("company/models/director/gemini");
+    assert.equal(missing.status, 400);
+    assert.match(missing.value.error, /Save the private/);
+    f.state.owner = false;
+    assert.equal((await f.json("company/models/assistant/gemini")).status, 401);
+  },
+);

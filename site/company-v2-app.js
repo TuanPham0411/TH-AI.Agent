@@ -1,3 +1,4 @@
+import { attachModelPicker } from "./company-model-picker.js";
 import { createExampleStudio } from "./workflow-example-studio.js";
 import { createConnectionStudio } from "./company-connection-studio.js";
 import { safeWorkLink } from "./company-v2-links.js";
@@ -947,6 +948,19 @@ function setup() {
         : "Enter privately";
       slots[slot] = { provider, model, key };
       host.append(area);
+      attachModelPicker({
+        area,
+        slot,
+        provider,
+        model,
+        key,
+        api,
+        sendJSON,
+        el,
+        field,
+        button,
+        hasSavedKey: !!state.data?.providers?.[slot],
+      });
     }
     const paid = field(
       host,

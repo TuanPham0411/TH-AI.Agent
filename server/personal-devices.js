@@ -137,6 +137,32 @@ export function deviceAgentRouter(pool) {
           unattended: a.unattended === true,
         })),
         pythonImageReady: c.pythonImageReady === true,
+        odbc:
+          c.odbc && typeof c.odbc === "object"
+            ? {
+                available: c.odbc.available === true,
+                bitness: [32, 64].includes(c.odbc.bitness)
+                  ? c.odbc.bitness
+                  : null,
+                drivers: Array.isArray(c.odbc.drivers)
+                  ? c.odbc.drivers
+                      .filter((x) => typeof x === "string" && x.length <= 200)
+                      .slice(0, 100)
+                  : [],
+                dataSources: Array.isArray(c.odbc.dataSources)
+                  ? c.odbc.dataSources
+                      .filter(
+                        (x) =>
+                          x &&
+                          typeof x.name === "string" &&
+                          typeof x.driver === "string" &&
+                          x.name.length <= 200 &&
+                          x.driver.length <= 200,
+                      )
+                      .slice(0, 200)
+                  : [],
+              }
+            : null,
       };
       // Heartbeats do not revise connection scope; only configuration changes do.
       if (
@@ -153,8 +179,57 @@ export function deviceAgentRouter(pool) {
         "UPDATE company_device_tasks SET state='claimed',claim_hash=$3 WHERE id=(SELECT id FROM company_device_tasks WHERE device_id=$1 AND generation=$2 AND state='queued' AND deadline>now() ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) AND EXISTS(SELECT 1 FROM company_devices WHERE id=$1 AND revoked_at IS NULL AND generation=$2) RETURNING id,action,input,deadline",
         [d.id, d.generation, hash(claim)],
       );
+      const task = r.rows[0];
+      if (task?.action === "odbc_query") {
+        const connection = (
+          await pool.query(
+            "SELECT revision,value FROM company_connections WHERE id=$1",
+            [task.input.connectionId],
+          )
+        ).rows[0];
+        if (
+          !connection ||
+          connection.value.kind !== "odbc" ||
+          connection.value.transport !== "device" ||
+          connection.value.deviceId !== d.id ||
+          connection.revision !== task.input.connectionRevision
+        ) {
+          await pool.query(
+            "UPDATE company_device_tasks SET state='failed',output=$2 WHERE id=$1",
+            [
+              task.id,
+              JSON.stringify({
+                ok: false,
+                error:
+                  "The saved ODBC connection changed or is not assigned to this device.",
+              }),
+            ],
+          );
+          return res.json({ task: null, pollAfterSeconds: 3 });
+        }
+        const secret =
+          (
+            await pool.query("SELECT secret FROM ai_credentials WHERE id=$1", [
+              "company_" + task.input.connectionId,
+            ])
+          ).rows[0]?.secret || {};
+        // Database credentials enter only the authenticated device response, never task storage or model arguments.
+        task.input = {
+          ...task.input,
+          dsn: connection.value.dsn,
+          dialect: connection.value.dialect,
+          auth: connection.value.auth,
+          _credential:
+            connection.value.auth === "credentials"
+              ? {
+                  username: secret.username || "",
+                  password: secret.password || "",
+                }
+              : {},
+        };
+      }
       res.json({
-        task: r.rows[0] ? { ...r.rows[0], claim } : null,
+        task: task ? { ...task, claim } : null,
         pollAfterSeconds: 3,
       });
     }),

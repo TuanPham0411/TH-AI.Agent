@@ -1,3 +1,4 @@
+import { clientOdbcQuery } from "./client-odbc.js";
 import { compare, validatePredicate } from "../site/company-flow.js";
 import { deviceInvoke } from "./personal-devices.js";
 import { serviceOperation } from "./company-connections.js";
@@ -355,6 +356,8 @@ export function createCompanyTools({
       return result.output;
     }
     if (step.tool === "query") {
+      if (connection?.kind === "odbc" && connection.transport === "device")
+        return clientOdbcQuery(pool, connection, args, { signal });
       if (!connection || !secret)
         throw Error(
           "The database connection is incomplete. Open its secure setup card.",

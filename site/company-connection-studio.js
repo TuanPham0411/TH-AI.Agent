@@ -11,6 +11,12 @@ export function createConnectionStudio({
   getData,
 }) {
   let devices = [];
+  const testSavedConnection = (id) =>
+    api("company/connections/" + encodeURIComponent(id) + "/check", {
+      method: "POST",
+      body: "{}",
+      signal: AbortSignal.timeout(60000),
+    });
   function open(title, build) {
     document.querySelector("#modal").close();
     modal(title, build);
@@ -29,6 +35,26 @@ export function createConnectionStudio({
         host,
         "Different tools need different credentials, permissions and places to run. Configure each once; your assistant uses the verified capability.",
       );
+      const targets = el("details", "", "connector-advanced");
+      targets.append(el("summary", "Where your tools run"));
+      for (const [title, text] of [
+        [
+          "Your computer",
+          "Office, text editors, browsers, files/folders/shared drives, Access/ODBC and local coding tools belong to the paired client. Only actions reported/configured by that client are callable. Installed ChatGPT/Codex UI applications are distinct from API access.",
+        ],
+        [
+          "Shared server",
+          "Shared network/database services and verified server tools run independently of the laptop.",
+        ],
+        [
+          "Online / personal APIs",
+          "Google services, Facebook, TikTok, Canva, GitHub and WhatsApp use their own API authentication, scopes and supported adapters. A personal desktop login is not an API credential.",
+        ],
+      ]) {
+        targets.append(el("strong", title));
+        note(targets, text);
+      }
+      host.append(targets);
       const bar = el("div", "", "connection-toolbar");
       bar.append(
         button("Pair / manage a computer", () => deviceManager(), "ink-button"),
@@ -60,13 +86,17 @@ export function createConnectionStudio({
             el("p", def.title + " · " + c.id),
             el(
               "p",
-              c.kind === "bridge"
+              c.kind === "bridge" || c.transport === "device"
                 ? (c.execution || "unverified") +
                     " · " +
                     (c.unattended
                       ? "server automation eligible"
                       : "online/manual use only")
-                : c.requestPath || c.accountId || c.database || def.summary,
+                : c.requestPath ||
+                    c.dsn ||
+                    c.accountId ||
+                    c.database ||
+                    def.summary,
             ),
           );
           const controls = el("div", "", "connection-toolbar");
@@ -75,10 +105,7 @@ export function createConnectionStudio({
             button(
               "Test connection",
               async () => {
-                const result = await sendJSON(
-                  "company/connections/" + c.id + "/check",
-                  {},
-                );
+                const result = await testSavedConnection(c.id);
                 notice(
                   result.note ||
                     (result.execution === "server" && result.unattended
@@ -133,7 +160,8 @@ export function createConnectionStudio({
     });
   }
   async function form(existing = null, need = {}) {
-    if ((existing?.kind || need.kind) === "bridge") await loadDevices();
+    if (["bridge", "odbc"].includes(existing?.kind || need.kind))
+      await loadDevices();
     open(existing ? "Configure " + existing.name : "Connect a tool", (host) => {
       const options = Object.entries(connectionTypes).map(([k, d]) => [
           k,
@@ -185,9 +213,11 @@ export function createConnectionStudio({
         aside.append(el("h4", "Where it runs"));
         note(
           aside,
-          kind.value === "bridge"
-            ? "On your paired computer. It must be online and awake. Portability assessment can move suitable Python tools to a verified server."
-            : "On the server, using the saved account and network route. Your browser tab is not the worker.",
+          kind.value === "odbc"
+            ? "Paired-computer mode uses the Windows driver/DSN on that computer, which must stay online. HTTPS mode uses your separately installed gateway. The Pi does not directly read a Windows DSN."
+            : kind.value === "bridge"
+              ? "On your paired computer. It must be online and awake. Portability assessment can move suitable Python tools to a verified server."
+              : "On the server, using the saved account and network route. Your browser tab is not the worker.",
         );
         aside.append(el("h4", "Private credentials"));
         note(
@@ -203,6 +233,10 @@ export function createConnectionStudio({
         }
         if (kind.value === "bridge") {
           bridgeFields();
+          return;
+        }
+        if (kind.value === "odbc") {
+          odbcFields();
           return;
         }
         const grid = el("div", "", "connector-field-grid");
@@ -269,6 +303,173 @@ export function createConnectionStudio({
           fields.auth.control.onchange = updateAuth;
           updateAuth();
         }
+      }
+      function odbcFields() {
+        const guide = el("a", "Windows / Oracle DSN setup guide →");
+        guide.href = "/odbc-setup.html";
+        guide.target = "_blank";
+        guide.rel = "noopener";
+        conditional.append(guide);
+        transport = field(
+          conditional,
+          "ODBC connection method",
+          existing?.transport || (existing ? "https" : "device"),
+          {
+            options: [
+              ["device", "DSN on a paired computer"],
+              ["https", "Existing HTTPS gateway"],
+            ],
+          },
+        );
+        const body = el("div");
+        conditional.append(body);
+        function draw() {
+          body.replaceChildren();
+          fields = {};
+          if (transport.value === "https") {
+            for (const spec of connectionTypes.odbc.fields) {
+              const control = field(
+                body,
+                spec.label,
+                spec.private ? "" : existing?.[spec.key] || "",
+                spec,
+              );
+              if (spec.private && existing)
+                control.placeholder = "Saved · leave blank to preserve";
+              fields[spec.key] = { control, spec };
+            }
+            note(
+              body,
+              "This mode requires an already installed HTTPS gateway implementing /query. A DSN name or Oracle TNS alias is not a URL.",
+            );
+            return;
+          }
+          const active = devices.filter((d) => !d.revoked);
+          device = field(
+            body,
+            "Computer containing this DSN",
+            existing?.deviceId || active[0]?.id || "",
+            {
+              options: active.length
+                ? active.map((d) => [
+                    d.id,
+                    d.name + " · " + (d.online ? "online" : "offline"),
+                  ])
+                : [["", "Pair a computer first"]],
+            },
+          );
+          body.append(
+            button(
+              "Pair / manage a computer",
+              () => deviceManager(),
+              "quiet-button",
+            ),
+          );
+          const detail = el("div");
+          body.append(detail);
+          function settings() {
+            detail.replaceChildren();
+            const d = active.find((d) => d.id === device.value),
+              info = d?.capabilities?.odbc;
+            note(
+              detail,
+              info?.available
+                ? "ODBC available · Python " +
+                    info.bitness +
+                    "-bit · " +
+                    info.dataSources.length +
+                    " visible DSNs. Driver and Python architectures must match."
+                : "ODBC support has not been reported. Install/update the agent with -EnableOdbc, start it under the Windows account that owns the DSN, then refresh devices.",
+            );
+            if (info?.drivers?.length)
+              note(detail, "Detected drivers: " + info.drivers.join(" · "));
+            const dsn = field(detail, "DSN name", existing?.dsn || "");
+            dsn.placeholder = "odssg_vn";
+            const datalist = el("datalist");
+            datalist.id = "dsn-" + crypto.randomUUID();
+            for (const item of info?.dataSources || []) {
+              const option = new Option(item.driver, item.name);
+              datalist.append(option);
+            }
+            dsn.setAttribute("list", datalist.id);
+            detail.append(datalist);
+            const dialect = field(
+              detail,
+              "Database dialect",
+              existing?.dialect || "oracle",
+              {
+                options: [
+                  ["oracle", "Oracle"],
+                  ["sqlserver", "Microsoft SQL Server"],
+                  ["postgres", "PostgreSQL"],
+                  ["mysql", "MySQL"],
+                  ["other", "Other ODBC database"],
+                ],
+              },
+            );
+            const auth = field(
+              detail,
+              "Database authentication",
+              existing?.auth || "credentials",
+              {
+                options: [
+                  ["credentials", "Database user ID and password"],
+                  ["dsn", "Use authentication already configured in the DSN"],
+                ],
+              },
+            );
+            const username = field(detail, "Database user ID", "");
+            const password = field(detail, "Database password", "", {
+              secret: true,
+            });
+            if (existing) {
+              username.placeholder = "Saved · leave blank to preserve";
+              password.placeholder = "Saved · leave blank to preserve";
+            }
+            function authentication() {
+              username.closest("label").hidden = password.closest(
+                "label",
+              ).hidden = auth.value !== "credentials";
+            }
+            auth.onchange = authentication;
+            authentication();
+            dsn.onchange = () => {
+              if (!id.value)
+                id.value = dsn.value
+                  .toLowerCase()
+                  .replace(/[^a-z0-9_-]/g, "")
+                  .slice(0, 60);
+              if (!name.value) name.value = dsn.value;
+              const driver = info?.dataSources?.find(
+                (s) => s.name === dsn.value,
+              )?.driver;
+              if (/oracle/i.test(driver || "")) dialect.value = "oracle";
+            };
+            for (const [key, control] of Object.entries({
+              dsn,
+              dialect,
+              auth,
+              username,
+              password,
+            }))
+              fields[key] = {
+                control,
+                spec: { key, private: ["username", "password"].includes(key) },
+              };
+            note(
+              detail,
+              "Keep your existing Oracle TNS Service Name (for example SGPODS) in the Windows DSN. It does not go in a URL field. Read queries execute on this computer. A read-only account is required.",
+            );
+            note(
+              detail,
+              "Windows ODBC Administrator: System32\\odbcad32.exe is 64-bit; SysWOW64\\odbcad32.exe is 32-bit. Open the one matching your Python/driver.",
+            );
+          }
+          device.onchange = settings;
+          settings();
+        }
+        transport.onchange = draw;
+        draw();
       }
       function bridgeFields() {
         transport = field(
@@ -422,7 +623,7 @@ export function createConnectionStudio({
         draw();
       }
       kind.onchange = async () => {
-        if (kind.value === "bridge") await loadDevices();
+        if (["bridge", "odbc"].includes(kind.value)) await loadDevices();
         details();
       };
       details();
@@ -445,7 +646,7 @@ export function createConnectionStudio({
               if (spec.private) body.secret[key] = value;
               else body[key] = value;
             }
-            if (kind.value === "bridge") {
+            if (["bridge", "odbc"].includes(kind.value)) {
               body.transport = transport.value;
               if (transport.value === "device") body.deviceId = device.value;
             }
@@ -469,12 +670,7 @@ export function createConnectionStudio({
           async () => {
             status.textContent = "Testing the saved connection…";
             try {
-              const r = await sendJSON(
-                "company/connections/" +
-                  encodeURIComponent(id.value) +
-                  "/check",
-                {},
-              );
+              const r = await testSavedConnection(id.value);
               status.textContent =
                 r.note ||
                 (r.execution === "server" && r.unattended
@@ -561,7 +757,7 @@ export function createConnectionStudio({
                 location.origin +
                 '/install-th-device.ps1" -OutFile "$env:TEMP\\install-th-device.ps1"\n& "$env:TEMP\\install-th-device.ps1" -Server "' +
                 location.origin +
-                '" -FullControl',
+                '" -FullControl -EnableOdbc -RePair',
             );
             result.append(
               el("h4", "Run in PowerShell on your laptop"),
@@ -569,7 +765,7 @@ export function createConnectionStudio({
             );
             note(
               result,
-              "Python 3.10+ must be installed. The installer stores its token under your Windows account, adds a logon startup task and starts the agent. Omit -FullControl for configured actions only. It does not install Python, request administrator elevation or access your computer before you run it.",
+              "Python 3.10+ must be installed. The installer stores its token under your Windows account, adds a logon startup task and starts the agent. -EnableOdbc installs pyodbc for this Python and discovers DSNs/drivers; their 32/64-bit architectures must match. Omit -FullControl for configured/read-only actions only. It does not install Python, request administrator elevation or access your computer before you run it.",
             );
             const a = el("a", "Download / inspect the installer");
             a.href = "/install-th-device.ps1";

@@ -354,7 +354,7 @@ export function companyScene(
       n(
         "text",
         { x: x + 20, y: y + 132, class: "tool-location" },
-        c?.kind === "bridge"
+        c?.kind === "bridge" || c?.transport === "device"
           ? c.execution === "server"
             ? "SERVER TOOL"
             : c.execution === "desktop"

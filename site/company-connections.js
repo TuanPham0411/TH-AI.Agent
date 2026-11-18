@@ -51,11 +51,11 @@ export const connectionTypes = {
     ],
   },
   odbc: {
-    title: "ODBC / DSN gateway",
+    title: "ODBC / DSN",
     group: "Databases",
     icon: "DB",
-    summary: "Read an existing DSN through its HTTPS gateway.",
-    auth: "The gateway machine owns the ODBC driver, DSN and database login. The web server sends parameterized read-only requests to /query; it cannot use your laptop DSN directly.",
+    summary: "Use a DSN on your paired computer, or an existing HTTPS gateway.",
+    auth: "For a Windows DSN, pair the device agent with ODBC support. Python and the Oracle/ODBC driver must have matching 32/64-bit architectures. User DSNs belong to the Windows account running the agent. No gateway URL is needed in paired-computer mode. Use a dedicated read-only database account.",
     fields: [
       f("baseUrl", "HTTPS gateway URL", { type: "url", required: true }),
       f("dsn", "DSN reference", { placeholder: "odssg_vn" }),

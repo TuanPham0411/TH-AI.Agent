@@ -1,3 +1,4 @@
+import { clientOdbcQuery } from "./client-odbc.js";
 import {
   connectionDefinition,
   databaseCredential,
@@ -45,6 +46,7 @@ export function normalizeConnection(kind, body, previous = {}) {
     "connectionString",
     ...definition.fields.filter((f) => f.private).map((f) => f.key),
     ...(kind === "bridge" ? ["key"] : []),
+    ...(kind === "odbc" ? ["username", "password"] : []),
   ]);
   if (
     !body.secret ||
@@ -57,7 +59,7 @@ export function normalizeConnection(kind, body, previous = {}) {
     throw Error("Use the supported secure credential fields.");
   for (const [k, v] of Object.entries(body.secret)) if (v.trim()) secret[k] = v;
   for (const f of definition.fields) {
-    if (f.private) continue;
+    if (f.private || (kind === "odbc" && body.transport === "device")) continue;
     let v =
       body[f.key] ??
       f.default ??
@@ -127,8 +129,45 @@ export function normalizeConnection(kind, body, previous = {}) {
   )
     throw Error("Choose a valid media owner/model.");
   if (kind === "odbc") {
-    value.baseUrl = httpsOrigin(value.baseUrl);
-    secret.baseUrl = value.baseUrl;
+    if (body.transport === "device") {
+      if (!/^[a-f0-9-]{36}$/.test(body.deviceId || ""))
+        throw Error("Choose the paired computer that owns this DSN.");
+      if (
+        typeof body.dsn !== "string" ||
+        !body.dsn.trim() ||
+        body.dsn.length > 200 ||
+        /[;={}\x00-\x1f]/.test(body.dsn)
+      )
+        throw Error("Provide the DSN name from Windows ODBC Data Sources.");
+      if (
+        !["oracle", "sqlserver", "postgres", "mysql", "other"].includes(
+          body.dialect,
+        ) ||
+        !["dsn", "credentials"].includes(body.auth)
+      )
+        throw Error("Choose the database dialect and DSN authentication mode.");
+      if (body.auth === "credentials" && !secret.username)
+        throw Error("Provide the private database user ID.");
+      Object.assign(value, {
+        transport: "device",
+        deviceId: body.deviceId,
+        dsn: body.dsn.trim(),
+        dialect: body.dialect,
+        auth: body.auth,
+        action: "odbc_query",
+        effect: "read",
+        execution: "unverified",
+        unattended: false,
+      });
+      secret.deviceId = body.deviceId;
+      delete secret.baseUrl;
+      delete secret.key;
+    } else {
+      value.transport = "https";
+      value.baseUrl = httpsOrigin(value.baseUrl);
+      secret.baseUrl = value.baseUrl;
+      delete secret.deviceId;
+    }
   }
   if (kind === "bridge") {
     const {
@@ -184,10 +223,11 @@ export function normalizeConnection(kind, body, previous = {}) {
       "microsoft",
       "media",
       "bridge",
-      "odbc",
+      ...(value.transport === "device" ? [] : ["odbc"]),
       "firestore",
     ].includes(kind) &&
-    !secret.key
+    !secret.key &&
+    !(kind === "odbc" && value.transport === "device")
   )
     throw Error("Provide the private access token.");
   if (
@@ -374,6 +414,23 @@ export async function serviceOperation(
   return { data: result, readOnly: true };
 }
 export async function checkConnection(c, s, options = {}) {
+  if (c.kind === "odbc" && c.transport === "device") {
+    const query =
+      c.dialect === "oracle" ? "SELECT 1 AS OK FROM dual" : "SELECT 1 AS ok";
+    await clientOdbcQuery(
+      options.pool,
+      c,
+      { query, parameters: [], limit: 1 },
+      { signal: options.signal },
+    );
+    return {
+      verified: true,
+      execution: "desktop",
+      unattended: false,
+      note: "Read-only query succeeded on the paired computer using its local DSN. Keep that computer online. Oracle table-specific permissions still apply.",
+    };
+  }
+
   if (["postgres", "mysql", "sqlserver", "oracle", "odbc"].includes(c.kind)) {
     const query =
       c.kind === "oracle" ? "SELECT 1 AS OK FROM dual" : "SELECT 1 AS ok";
