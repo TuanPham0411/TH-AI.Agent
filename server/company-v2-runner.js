@@ -691,8 +691,12 @@ export class CompanyRunner {
               })),
             };
             await db.query(
-              `INSERT INTO company_recipes(id,value) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET value=company_recipes.value||excluded.value||jsonb_build_object('procedureVersion',coalesce((company_recipes.value->>'procedureVersion')::int,1)+1),revision=company_recipes.revision+1,updated_at=now()`,
-              [job.recipeId || randomUUID(), JSON.stringify(recipe)],
+              `INSERT INTO company_recipes(id,value) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET value=company_recipes.value||excluded.value||jsonb_build_object('instructions',CASE WHEN $3 THEN company_recipes.value->'instructions' ELSE excluded.value->'instructions' END,'procedureVersion',coalesce((company_recipes.value->>'procedureVersion')::int,1)+CASE WHEN company_recipes.value->'procedure' IS DISTINCT FROM excluded.value->'procedure' OR (NOT $3 AND company_recipes.value->'instructions' IS DISTINCT FROM excluded.value->'instructions') THEN 1 ELSE 0 END),revision=company_recipes.revision+1,updated_at=now()`,
+              [
+                job.recipeId || randomUUID(),
+                JSON.stringify(recipe),
+                !!job.automation,
+              ],
             );
           });
           return;
