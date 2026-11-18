@@ -520,3 +520,68 @@ test("a personal write tool with a lost response is uncertain while a read tool 
     (e) => !e.uncertain,
   );
 });
+
+test("both model roles receive actual tool location/capabilities without gateway secrets", async () => {
+  const store = new MemoryStore();
+  store.connectionsList = [
+    {
+      id: "laptop",
+      kind: "bridge",
+      name: "Tool host",
+      execution: "desktop",
+      unattended: false,
+      verifiedAt: "2026-11-18T00:00:00Z",
+      baseUrl: "https://private-tool-host",
+      action: "inspect_python",
+    },
+    {
+      id: "worker",
+      kind: "bridge",
+      name: "Worker",
+      execution: "server",
+      unattended: true,
+      verifiedAt: "2026-11-18T00:00:00Z",
+      pythonImageReady: true,
+      action: "run_python_tool",
+    },
+  ];
+  const id = store.add(),
+    calls = [];
+  const runner = new CompanyRunner({
+    store,
+    getSecret: async () => ({ key: "not-for-context" }),
+    model: async (data) => {
+      calls.push(JSON.parse(data.messages[0].text));
+      return response(
+        data.slot === "assistant"
+          ? { reply: "I will assess the tool location.", dispatch: true }
+          : { action: "ask", message: "Choose the Python project folder." },
+      );
+    },
+    tool: async () => {
+      throw Error("No local execution allowed during planning.");
+    },
+  });
+  await runner.tick();
+  for (const context of calls) {
+    assert.equal(
+      context.connections.find((c) => c.id === "laptop").execution,
+      "desktop",
+    );
+    assert.equal(
+      context.connections.find((c) => c.id === "laptop").unattended,
+      false,
+    );
+    assert.equal(
+      context.connections.find((c) => c.id === "worker").execution,
+      "server",
+    );
+    assert(!JSON.stringify(context).includes("private-tool-host"));
+    assert(!JSON.stringify(context).includes("not-for-context"));
+  }
+  assert.equal(
+    calls[1].connections.find((c) => c.id === "worker").pythonImageReady,
+    true,
+  );
+  assert.equal((await store.get(id)).state, "waiting_input");
+});
