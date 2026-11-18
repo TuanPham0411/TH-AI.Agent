@@ -11,3 +11,4 @@ work/
 artifacts/*.png
 artifacts/*.jpg
 __pycache__/
+artifacts/*.xlsx

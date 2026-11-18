@@ -33,6 +33,9 @@ export async function queryWorkbench(engine,config,secret,{request,signal,driver
    if(!/^mongodb(?:\+srv)?:\/\//.test(secret.connectionString||''))fail('Use a MongoDB connection URI.');const mod=drivers.mongo||await import('mongodb');client=new mod.MongoClient(secret.connectionString,{serverSelectionTimeoutMS:5000,connectTimeoutMS:5000,socketTimeoutMS:6000,maxPoolSize:1});await client.connect();const filter=mongoFilter(JSON.parse(config.query||'{}'));const data=await client.db().collection(collection(config.collection)).find(filter).maxTimeMS(5000).limit(limit+1).toArray();if(data.length>limit)fail('Query exceeds configured row limit.');return boundedResult(data,engine);
   }
   const query=readQuery(config.query),values=params(config.parameters);
+  if(engine==='postgres'){
+   if(!/^postgres(?:ql)?:\/\//.test(secret.connectionString||''))fail('Use a PostgreSQL connection URI.');const mod=drivers.postgres||await import('pg'),driver=mod.default||mod;client=new driver.Client({connectionString:secret.connectionString,connectionTimeoutMillis:5000,statement_timeout:5000});await client.connect();await client.query('BEGIN READ ONLY');const result=await client.query({text:'SELECT * FROM ('+query+') AS th_read LIMIT '+(limit+1),values,queryMode:'extended'});if(result.rows.length>limit)fail('Query exceeds configured row limit.');return boundedResult(result.rows,engine);
+  }
   if(engine==='mysql'){
    const mod=drivers.mysql||await import('mysql2/promise');const url=new URL(secret.connectionString);if(!['mysql:','mysqls:'].includes(url.protocol))fail('Use a mysql:// or mysqls:// URI.');
    client=await mod.createConnection({host:url.hostname,port:Number(url.port)||3306,user:decodeURIComponent(url.username),password:decodeURIComponent(url.password),database:url.pathname.slice(1),connectTimeout:5000,multipleStatements:false,rowsAsArray:false,...(url.protocol==='mysqls:'?{ssl:{rejectUnauthorized:true}}:{})});
