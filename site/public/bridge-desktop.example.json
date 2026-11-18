@@ -1,0 +1,16 @@
+{
+  "execution": "desktop",
+  "unattended": false,
+  "host": "0.0.0.0",
+  "port": 8766,
+  "roots": {"tools": "C:\\Users\\YOUR_USER\\Tools"},
+  "actions": {
+    "office-report": {
+      "argv": ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-NoProfile", "-NonInteractive", "-File", "C:\\Users\\YOUR_USER\\Tools\\office-report.ps1"],
+      "effect": "write",
+      "requiresDesktop": true,
+      "unattended": false,
+      "timeoutSeconds": 60
+    }
+  }
+}

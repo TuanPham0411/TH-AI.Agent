@@ -2,3 +2,5 @@ import {build} from 'esbuild';import {cp,mkdir} from 'node:fs/promises';await mk
 
 
 await cp('server/th-storage/capture.sql','dist/server/storage-capture.sql');
+
+await cp('tools/personal-bridge.py','dist/web/personal-bridge.py');
