@@ -8,7 +8,23 @@ import {
   toolCatalog,
 } from "../site/company-v2-model.js";
 import { payloadHash, resolveToolStep } from "./company-v2-tools.js";
+const redact = (value) =>
+  Array.isArray(value)
+    ? value.map(redact)
+    : value && typeof value === "object"
+      ? Object.fromEntries(
+          Object.entries(value).map(([key, item]) => [
+            key,
+            /password|passwd|token|secret|api[_-]?key|connectionString/i.test(
+              key,
+            )
+              ? "[private value omitted]"
+              : redact(item),
+          ]),
+        )
+      : value;
 const preview = (value, max = 2000) => {
+  value = redact(value);
   if (value?.portability)
     return {
       portability: value.portability,

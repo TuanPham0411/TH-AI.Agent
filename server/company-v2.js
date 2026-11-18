@@ -11,6 +11,7 @@ import {
   defaultCompanySettings,
   validateSettings,
   safePublicMessage,
+  containsPrivateCredential,
 } from "../site/company-v2-model.js";
 const uuid = (v) =>
     typeof v === "string" &&
@@ -135,13 +136,9 @@ export function mountCompanyV2(
         fail(
           "Send a request with a unique request ID (up to 16,000 characters).",
         );
-      if (
-        /\b(?:sk-[A-Za-z0-9_-]{15,}|AIza[A-Za-z0-9_-]{20,}|EAA[A-Za-z0-9]{30,})\b/.test(
-          text,
-        )
-      )
+      if (containsPrivateCredential(text))
         fail(
-          "Use the secure connection form for API keys; they must not enter conversation history.",
+          "Use the secure connection form for passwords and API keys; they must not enter conversation history.",
         );
       const result = await store.enqueue({ requestId, text: text.trim() });
       res.status(result.reused ? 200 : 202).json({ ...result, durable: true });
@@ -631,6 +628,8 @@ export function mountCompanyV2(
         text.length > 16000
       )
         fail("Send a bounded response.");
+      if (containsPrivateCredential(text))
+        fail("Use the secure connection card for passwords and API keys.");
       const job = await store.tx(async (db) => {
         const job = await store.get(req.params.id, db, true);
         if (!job) fail("Work not found.", 404);

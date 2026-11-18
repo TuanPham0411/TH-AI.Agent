@@ -26,6 +26,18 @@ test(
     await f.setSecret("company_ai_director_gemini", {
       key: "fixture-director",
     });
+    const privateRequest = await f.json("company/messages", {
+      requestId: randomUUID(),
+      text: "password=keep-this-private",
+    });
+    assert.equal(privateRequest.status, 400);
+    assert.equal(
+      Number(
+        (await f.pool.query("SELECT count(*) FROM company_messages")).rows[0]
+          .count,
+      ),
+      0,
+    );
     const requestId = randomUUID(),
       request = {
         requestId,
