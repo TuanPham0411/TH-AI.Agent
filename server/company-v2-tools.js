@@ -66,6 +66,26 @@ export function createCompanyTools({
     const connection = connections.find((c) => c.id === step.connection),
       secret = connection ? await getSecret("company_" + connection.id) : null,
       args = step.args;
+    if (step.tool === "browse") {
+      if (connection?.kind !== "bridge" || !secret?.key)
+        throw Error("Connect the computer containing the folder first.");
+      const path = "/actions/list_folder/invoke",
+        result = await gateway(secret.baseUrl, { path })(
+          new URL(path, secret.baseUrl),
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + secret.key,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ input: args }),
+            signal,
+          },
+        );
+      if (result?.ok !== true || result.output?.readOnly !== true)
+        throw Error("The bridge did not confirm a read-only folder listing.");
+      return result.output;
+    }
     if (step.tool === "inspect_python") {
       if (connection?.kind !== "bridge" || !secret?.key)
         throw Error("Connect the computer containing the tool folder first.");

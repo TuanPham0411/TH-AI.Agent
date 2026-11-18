@@ -159,6 +159,19 @@ def invoke(config, action, value):
         capability = config.get('actions', {}).get(value.get('action'), {})
         unattended = config.get('execution') == 'server' and config.get('unattended') is True and capability.get('unattended', value.get('action') in {'inspect_python', 'export_python', 'stage_python', 'run_python_tool'}) is True and not capability.get('requiresDesktop')
         return {'execution': config.get('execution', 'desktop'), 'unattended': unattended, 'platform': platform.system(), 'pythonImageReady': image_ready(config) if value.get('action') == 'run_python_tool' else None}
+    if action == 'list_folder':
+        root = config.get('roots', {}).get(value.get('root', 'tools'))
+        if not root:
+            raise ValueError('Choose a configured filesystem root.')
+        folder = within(root, value.get('folder', '.'))
+        entries = []
+        for path in sorted(folder.iterdir()):
+            if path.is_symlink() or SECRET.search(path.name):
+                continue
+            entries.append({'name': path.name, 'path': path.relative_to(pathlib.Path(root).resolve()).as_posix(), 'kind': 'folder' if path.is_dir() else 'file', 'size': path.stat().st_size if path.is_file() else None})
+            if len(entries) >= 200:
+                break
+        return {'root': value.get('root', 'tools'), 'folder': value.get('folder', '.'), 'rows': entries, 'rowCount': len(entries), 'limit': 200, 'readOnly': True}
     if action in {'inspect_python', 'export_python'}:
         return project(config, value, bundle=action == 'export_python')
     if action == 'stage_python':
