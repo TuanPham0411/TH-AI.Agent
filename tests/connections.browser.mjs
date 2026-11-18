@@ -17,7 +17,7 @@ try {
   await page.goto(f.origin);
   await page.getByRole("button", { name: "Connections", exact: true }).click();
   await page
-    .getByRole("heading", { name: "Your working environment", exact: true })
+    .getByRole("heading", { name: "Connections", exact: true })
     .waitFor();
   assert.equal(await page.locator(".connector-choice").count(), 15);
   await page

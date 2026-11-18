@@ -30,11 +30,8 @@ export function createConnectionStudio({
     devices = (await api("company/devices")).devices;
   }
   async function list() {
-    open("Your working environment", (host) => {
-      note(
-        host,
-        "Different tools need different credentials, permissions and places to run. Configure each once; your assistant uses the verified capability.",
-      );
+    open("Connections", (host) => {
+      note(host, "Manage accounts, tools and execution locations.");
       const targets = el("details", "", "connector-advanced");
       targets.append(el("summary", "Where your tools run"));
       for (const [title, text] of [
@@ -152,10 +149,7 @@ export function createConnectionStudio({
   }
   function gallery() {
     open("Choose a connection", (host) => {
-      note(
-        host,
-        "Choose a service to see its own setup, required permissions and supported operations.",
-      );
+      note(host, "Choose a service or tool.");
       renderGallery(host);
     });
   }
@@ -628,12 +622,15 @@ export function createConnectionStudio({
       };
       details();
       const status = el("p", "", "setup-status"),
-        controls = el("div", "", "connection-toolbar");
+        controls = el("div", "", "connection-toolbar dialog-actions");
       main.append(status, controls);
       controls.append(
         button(
           "Save secure connection",
           async () => {
+            if (!/^[a-z][a-z0-9_-]{0,59}$/.test(id.value))
+              throw Error("Enter a connection ID starting with a letter.");
+            if (!name.value.trim()) throw Error("Enter a display name.");
             const body = {
               kind: kind.value,
               name: name.value,

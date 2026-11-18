@@ -90,10 +90,8 @@ try {
     type: "jpeg",
     quality: 88,
   });
-  await page.getByRole("button", { name: "×", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Company setup", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   const old = await page
     .getByLabel("assistant model", { exact: true })
     .inputValue();

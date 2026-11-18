@@ -10,7 +10,7 @@ const n = (tag, attrs = {}, text) => {
 const colors = {
   skipped: "#8a8b83",
   waiting_timer: "#ad893a",
-  pending: "#9aaab2",
+  pending: "#6b8187",
   executing: "#147f91",
   completed: "#347557",
   waiting_external: "#147f91",
@@ -69,7 +69,7 @@ export function stepDependencies(step) {
 export function companyScene(
   job,
   onSelect,
-  { connections = [], selectedId = null } = {},
+  { connections = [], selectedId = null, newStepIds = new Set() } = {},
 ) {
   const steps = job?.steps || [],
     layout = flowLayout(steps),
@@ -94,103 +94,69 @@ export function companyScene(
   marker.append(n("path", { d: "M0 0L10 5L0 10Z", fill: "context-stroke" }));
   defs.append(marker);
   svg.append(defs);
-  const hub = (x, title, subtitle, index) => {
-    const active =
-      job?.state === "running" &&
-      ((title === "Assistant" && job.phase === "assistant") ||
-        (title === "Director" && job.phase !== "assistant"));
+  const hub = (x, title, active) => {
     const g = n("g", {
       class: "mind-hub" + (active ? " active" : ""),
       "aria-label": title + " · AI role",
     });
     g.append(
-      n("path", {
-        d: `M${x - 96} 40h180l16 16v53h-180l-16-16Z`,
-        fill: title === "Assistant" ? "#e0edcf" : "#d2e7e4",
-        stroke: "#b6cec4",
+      n("rect", {
+        x: x - 78,
+        y: 23,
+        width: 156,
+        height: 38,
+        rx: 6,
+        fill: "#f7faf8",
+        stroke: active ? "#6cae9f" : "#c4d8d0",
       }),
-      n("path", {
-        d: `M${x - 96} 93l16 16h180v9h-180l-16-16Z`,
-        fill: "#b1c9bd",
+      n("circle", {
+        cx: x - 58,
+        cy: 42,
+        r: 3,
+        fill: active ? "#16839a" : "#8fab9c",
+        class: "hub-status",
       }),
-      n("text", { x: x - 74, y: 66, class: "hub-index" }, index),
-      n("text", { x: x - 43, y: 67, class: "hub-name" }, title),
-      n("text", { x: x - 74, y: 89, class: "hub-caption" }, subtitle),
+      n("text", { x: x - 44, y: 47, class: "hub-name" }, title),
     );
     svg.append(g);
   };
-  hub(308, "Assistant", "Conversation & delivery", "01");
-  hub(680, "Director", "Planning & tool execution", "02");
+  hub(335, "Assistant", job?.state === "running" && job.phase === "assistant");
+  hub(665, "Director", job?.state === "running" && job.phase !== "assistant");
   svg.append(
     n("path", {
-      d: "M410 72H570",
+      d: "M417 42H582",
       class: "control-route" + (job?.state === "running" ? " active" : ""),
       "marker-end": "url(#signal-arrow)",
     }),
-    n(
-      "text",
-      { x: 490, y: 53, "text-anchor": "middle", class: "signal-label" },
-      "REQUEST / PLAN",
-    ),
   );
   if (!steps.length) {
     svg.append(
       n(
         "text",
-        { x: 500, y: 265, "text-anchor": "middle", class: "flow-empty" },
-        job
-          ? "Your assistant is preparing the next step."
-          : "Your tools. A visible path to results.",
-      ),
-      n(
-        "text",
-        { x: 500, y: 296, "text-anchor": "middle", class: "flow-sub" },
+        { x: 500, y: 153, "text-anchor": "middle", class: "flow-empty" },
         job?.state === "waiting_input"
-          ? "Missing information is requested in the conversation."
-          : "Each actual tool will appear as its own connected block.",
+          ? "Waiting for your input"
+          : job?.phase === "assistant"
+            ? "Understanding request…"
+            : "Preparing workflow…",
       ),
     );
-    for (const [i, label] of ["INPUT", "TOOL", "RESULT"].entries()) {
-      const x = 210 + i * 250;
-      svg.append(
-        n("rect", {
-          x: x - 70,
-          y: 355,
-          width: 140,
-          height: 65,
-          rx: 13,
-          class: "empty-port",
-        }),
-        n(
-          "text",
-          { x, y: 393, "text-anchor": "middle", class: "signal-label" },
-          label,
-        ),
-      );
-      if (i < 2)
-        svg.append(
-          n("path", {
-            d: `M${x + 78} 388h85`,
-            class: "control-route",
-            "marker-end": "url(#signal-arrow)",
-          }),
-        );
-    }
     return svg;
   }
   const { positions, groups } = layout;
   groups.forEach((group, level) => {
+    if (group.length === 1 && !group[0].operation) return;
     const y = positions.get(group[0].id).y;
     svg.append(
       n(
         "text",
         { x: 55, y: y - 20, class: "layer-label" },
-        "LAYER " +
+        "Layer " +
           String(level + 1).padStart(2, "0") +
           " · " +
           (group.length > 1
-            ? group.length + " INDEPENDENT BRANCHES"
-            : group[0].operation || "SEQUENTIAL OPERATION"),
+            ? group.length + " branches"
+            : group[0].operation || ""),
       ),
     );
   });
@@ -200,8 +166,8 @@ export function companyScene(
       parents = dependencies(s, steps);
     for (const parent of parents.length ? parents : ["director"]) {
       const source = positions.get(parent),
-        fromX = source ? source.x + source.w / 2 : 680,
-        fromY = source ? source.y + 146 : 118;
+        fromX = source ? source.x + source.w / 2 : 665,
+        fromY = source ? source.y + 146 : 66;
       const active = ["executing", "waiting_external"].includes(s.state),
         previous = steps.find((p) => p.id === parent);
       const path = n("path", {
@@ -268,7 +234,11 @@ export function companyScene(
       kind = connectionTypes[c?.kind],
       color = colors[s.state] || colors.pending;
     const g = n("g", {
-      class: "flow-step " + s.state + (s.id === selectedId ? " selected" : ""),
+      class:
+        "flow-step " +
+        s.state +
+        (s.id === selectedId ? " selected" : "") +
+        (newStepIds.has(s.id) ? " is-new" : ""),
       "data-step-id": s.id,
       "data-tool": s.tool,
       role: "button",

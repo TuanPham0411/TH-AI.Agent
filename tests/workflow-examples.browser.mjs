@@ -13,7 +13,7 @@ try {
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(f.origin);
-  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  await page.getByRole("button", { name: "Workflows", exact: true }).click();
   assert.equal(await page.locator(".example-card").count(), 37);
   await page.screenshot({
     path: "artifacts/workflow-example-library.jpg",
@@ -43,7 +43,7 @@ try {
   });
   assert.equal(f.state.calls.length, 0);
   assert.equal((await f.json("company/workspace")).value.jobs.length, 0);
-  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  await page.getByRole("button", { name: "Workflows", exact: true }).click();
   const card = page.locator(".example-card").filter({
     has: page.getByRole("heading", {
       name: "Query → condition → export or empty result",
