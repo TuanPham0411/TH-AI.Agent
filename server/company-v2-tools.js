@@ -8,13 +8,29 @@ import { confinedFile } from "./th-storage/attachments.mjs";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { outputFiles, fileRoot } from "./studio-files.js";
+const canonical = (value) =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === "object"
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((key) => [key, canonical(value[key])]),
+        )
+      : value;
 export const payloadHash = (step, connection) =>
   createHash("sha256")
     .update(
-      JSON.stringify({
-        step: { tool: step.tool, args: step.args, connection: step.connection },
-        connectionRevision: connection?.revision || 0,
-      }),
+      JSON.stringify(
+        canonical({
+          step: {
+            tool: step.tool,
+            args: step.args,
+            connection: step.connection,
+          },
+          connectionRevision: connection?.revision || 0,
+        }),
+      ),
     )
     .digest("hex");
 export function resolveStepValues(value, steps, depth = 0) {

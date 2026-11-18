@@ -624,3 +624,31 @@ test("confirmed query data really reaches personal tools and export mappings rej
     /mapped field/,
   );
 });
+
+test("approval signatures survive PostgreSQL JSONB key reordering but reject changed content/destination revisions", () => {
+  const one = {
+      tool: "publish",
+      connection: "page",
+      args: { caption: "Hello", link: "https://example.com" },
+    },
+    two = {
+      tool: "publish",
+      connection: "page",
+      args: { link: "https://example.com", caption: "Hello" },
+    };
+  assert.equal(
+    payloadHash(one, { revision: 1 }),
+    payloadHash(two, { revision: 1 }),
+  );
+  assert.notEqual(
+    payloadHash(one, { revision: 1 }),
+    payloadHash(two, { revision: 2 }),
+  );
+  assert.notEqual(
+    payloadHash(one, { revision: 1 }),
+    payloadHash(
+      { ...two, args: { ...two.args, caption: "Changed" } },
+      { revision: 1 },
+    ),
+  );
+});
