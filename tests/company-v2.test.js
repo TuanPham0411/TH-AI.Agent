@@ -1,3 +1,4 @@
+import { safeWorkLink } from "../site/company-v2-links.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -650,5 +651,23 @@ test("approval signatures survive PostgreSQL JSONB key reordering but reject cha
       { ...two, args: { ...two.args, caption: "Changed" } },
       { revision: 1 },
     ),
+  );
+});
+
+test("workflow result and media links cannot execute a scheme supplied by a tool/model", () => {
+  for (const raw of [
+    "javascript:alert(1)",
+    "data:text/html,<script>bad</script>",
+    "file:///etc/passwd",
+    "https://user:password@example.com/",
+  ])
+    assert.equal(safeWorkLink(raw, "https://thienha.io.vn"), null);
+  assert.equal(
+    safeWorkLink("/api/studio/files/example", "https://thienha.io.vn"),
+    "https://thienha.io.vn/api/studio/files/example",
+  );
+  assert.equal(
+    safeWorkLink("https://www.facebook.com/123_456", "https://thienha.io.vn"),
+    "https://www.facebook.com/123_456",
   );
 });

@@ -1,3 +1,4 @@
+import { safeWorkLink } from "./company-v2-links.js";
 import { defaultCompanySettings, jobStates } from "./company-v2-model.js";
 import { companyScene } from "./company-v2-scene.js";
 import { renderAnswer } from "./chat-answer.js";
@@ -256,13 +257,13 @@ function render() {
       const files = el("div", "", "delivered-files");
       for (const f of linked.result.files || []) {
         const a = el("a", "↓ " + f.name);
-        a.href = f.url;
+        a.href = safeWorkLink(f.url, location.origin) || "#";
         a.download = f.name;
         files.append(a);
       }
       for (const receipt of linked.result.receipts || []) {
         const a = el("a", "Open confirmed publication ↗");
-        a.href = receipt.url;
+        a.href = safeWorkLink(receipt.url, location.origin) || "#";
         a.target = "_blank";
         a.rel = "noopener noreferrer";
         files.append(a);
@@ -328,7 +329,8 @@ function render() {
         preview.append(el("blockquote", payload.caption || payload.prompt));
       if (payload.imageUrl) {
         const image = el("img");
-        image.src = payload.imageUrl;
+        const imageURL = safeWorkLink(payload.imageUrl, location.origin);
+        if (imageURL) image.src = imageURL;
         image.alt = "Prepared publication visual";
         image.loading = "lazy";
         image.referrerPolicy = "no-referrer";
@@ -336,7 +338,7 @@ function render() {
       }
       if (payload.videoUrl) {
         const link = el("a", "Review prepared video →");
-        link.href = payload.videoUrl;
+        link.href = safeWorkLink(payload.videoUrl, location.origin) || "#";
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         preview.append(link);
@@ -650,7 +652,7 @@ function render() {
     const files = el("div", "", "delivered-files");
     for (const file of selected.result.files) {
       const a = el("a", "↓ " + file.name);
-      a.href = file.url;
+      a.href = safeWorkLink(file.url, location.origin) || "#";
       a.download = file.name;
       files.append(a);
     }
@@ -658,7 +660,7 @@ function render() {
   }
   for (const receipt of selected?.result?.receipts || []) {
     const a = el("a", "Open confirmed publication ↗");
-    a.href = receipt.url;
+    a.href = safeWorkLink(receipt.url, location.origin) || "#";
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     strip.append(a);
