@@ -185,7 +185,7 @@ export function flowLayout(steps) {
     levels.set(s.id, level);
     (groups[level] ??= []).push(s);
   }
-  let y = 220;
+  let y = 130;
   const positions = new Map();
   groups.forEach((group, level) => {
     group.forEach((s, i) =>
@@ -198,7 +198,7 @@ export function flowLayout(steps) {
     );
     y += Math.ceil(group.length / 2) * 190 + 15;
   });
-  return { positions, groups, height: Math.max(520, y + 30) };
+  return { positions, groups, height: Math.max(260, y + 20) };
 }
 const stable = (v) =>
   Array.isArray(v)

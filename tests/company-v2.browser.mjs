@@ -20,9 +20,7 @@ try {
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(f.origin + "/#workflow");
-  await page
-    .getByRole("heading", { name: "Consider it handled.", exact: true })
-    .waitFor();
+  await page.getByRole("heading", { name: "Assistant", exact: true }).waitFor();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
   assert.equal(await page.locator(".studio").count(), 0);
   await page.screenshot({
@@ -35,9 +33,7 @@ try {
     .fill(
       "Find the 10-ADU8 documents in table A of odssg_vn and give me an Excel file.",
     );
-  await page
-    .getByRole("button", { name: "Send request →", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await page
     .getByRole("button", { name: "Secure AI setup", exact: true })
     .waitFor();
@@ -72,7 +68,7 @@ try {
     await page.getByLabel("assistant API key", { exact: true }).inputValue(),
     "",
   );
-  await page.getByRole("button", { name: "×", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page
     .getByRole("button", { name: "Connection updated — continue", exact: true })
     .click();
@@ -102,7 +98,7 @@ try {
       { exact: true },
     )
     .waitFor();
-  await page.getByRole("button", { name: "×", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page
     .getByRole("button", { name: "Connection updated — continue", exact: true })
     .click();
@@ -140,7 +136,7 @@ try {
       exact: true,
     })
     .waitFor();
-  await page.getByRole("button", { name: "×", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page
     .locator(".workflow-controls")
     .getByRole("button", { name: "Automation on", exact: true })
@@ -159,9 +155,7 @@ try {
   await page
     .getByLabel("Message your assistant", { exact: true })
     .fill("I’m feeling low. Post something thoughtful to my Facebook Page.");
-  await page
-    .getByRole("button", { name: "Send request →", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await page
     .getByRole("button", { name: "Set up facebook", exact: true })
     .waitFor();
@@ -206,7 +200,7 @@ try {
       { exact: true },
     )
     .waitFor();
-  await page.getByRole("button", { name: "×", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page
     .getByRole("button", { name: "Connection updated — continue", exact: true })
     .click();

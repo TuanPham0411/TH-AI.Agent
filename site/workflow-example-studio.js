@@ -18,31 +18,90 @@ export function createExampleStudio({
     document.querySelector("#modal").classList.add("connection-dialog");
   }
   const help = (host, text) => host.append(el("p", text, "connector-help"));
+  let activeLibraryTab = null,
+    searchText = "",
+    category = "all";
   function library() {
-    open("Workflow examples", (host) => {
-      help(
-        host,
-        "37 configurable workflows covering the available tools, connections and combined operations. Preview does not run tools, call models, publish or enable automation.",
+    open("Workflows", (host) => {
+      const saved = (getData()?.recipes || []).filter(
+        (r) => r.source !== "starter-template",
       );
-      const drafts = (getData()?.recipes || []).filter(
-        (r) => r.source === "personal-example",
-      );
-      if (drafts.length) {
-        host.append(el("h3", "Your editable drafts", "connector-group-title"));
-        const grid = el("div", "", "example-grid");
-        for (const r of drafts) grid.append(card(r, true));
-        host.append(grid);
-      }
+      activeLibraryTab ||= saved.length ? "saved" : "examples";
+      const bar = el("div", "", "library-toolbar"),
+        tabs = el("div", "", "library-tabs");
+      tabs.setAttribute("role", "tablist");
+      tabs.setAttribute("aria-label", "Workflow library");
+      const content = el("div", "", "library-content"),
+        count = el("span", "", "library-count");
+      const search = field(bar, "Search workflows", searchText);
+      search.type = "search";
+      search.placeholder = "Search workflows…";
       const categories = [...new Set(workflowExamples.map((e) => e.category))];
-      for (const category of categories) {
-        host.append(el("h3", category, "connector-group-title"));
+      const filter = field(bar, "Category", category, {
+        options: [["all", "All categories"], ...categories.map((c) => [c, c])],
+      });
+      filter.closest("label").classList.add("library-category");
+      function draw() {
+        tabs.replaceChildren();
+        for (const [key, title] of [
+          ["saved", "My workflows"],
+          ["examples", "Examples"],
+        ]) {
+          const b = button(
+            title,
+            () => {
+              activeLibraryTab = key;
+              draw();
+            },
+            "",
+          );
+          b.setAttribute("role", "tab");
+          b.setAttribute("aria-selected", activeLibraryTab === key);
+          tabs.append(b);
+        }
+        const items = (
+          activeLibraryTab === "saved" ? saved : workflowExamples
+        ).filter(
+          (r) =>
+            (category === "all" || r.category === category) &&
+            (r.title + " " + (r.description || r.instructions || ""))
+              .toLowerCase()
+              .includes(searchText.toLowerCase()),
+        );
+        count.textContent =
+          items.length +
+          " " +
+          (activeLibraryTab === "saved" ? "saved" : "examples");
+        content.replaceChildren();
+        if (!items.length) {
+          content.append(
+            el(
+              "p",
+              activeLibraryTab === "saved"
+                ? "No saved workflows. Choose an example or ask your assistant to create one."
+                : "No matching workflows.",
+              "connector-help",
+            ),
+          );
+          return;
+        }
         const grid = el("div", "", "example-grid");
-        for (const example of workflowExamples.filter(
-          (e) => e.category === category,
-        ))
-          grid.append(card(example));
-        host.append(grid);
+        for (const r of items)
+          grid.append(card(r, activeLibraryTab === "saved"));
+        content.append(grid);
       }
+      search.oninput = () => {
+        searchText = search.value;
+        draw();
+      };
+      filter.onchange = () => {
+        category = filter.value;
+        draw();
+      };
+      bar.prepend(tabs);
+      bar.append(count);
+      host.append(bar, content);
+      draw();
     });
   }
   function card(example, owned = false) {
@@ -52,36 +111,57 @@ export function createExampleStudio({
         "span",
         (example.procedure?.length || 0) +
           " BLOCKS · " +
-          (owned ? "YOUR DRAFT" : "SETUP REQUIRED"),
+          (owned
+            ? example.draft
+              ? "DRAFT"
+              : example.source === "legacy-workflow"
+                ? "LEGACY"
+                : "VERIFIED"
+            : "EXAMPLE"),
         "eyebrow",
       ),
       el("h4", example.title),
       el("p", example.description || example.instructions),
     );
     const actions = el("div", "", "connection-toolbar");
-    actions.append(
-      button(
-        "Preview workflow",
-        () => {
-          document.querySelector("#modal").close();
-          onPreview(example);
-        },
-        "quiet-button",
-      ),
-      button(
-        owned ? "Edit draft" : "Configure a copy",
-        async () => {
-          let id = example.id;
-          if (!owned)
-            id = (
-              await sendJSON("company/examples/" + example.id + "/copy", {})
-            ).id;
-          await refresh();
-          edit(getData().recipes.find((r) => r.id === id));
-        },
-        "ink-button",
-      ),
-    );
+    if (example.procedure?.length)
+      actions.append(
+        button(
+          "Preview workflow",
+          () => {
+            document.querySelector("#modal").close();
+            onPreview(example);
+          },
+          "quiet-button",
+        ),
+      );
+    if (owned && example.source !== "personal-example") {
+      actions.append(
+        button(
+          "Prepare request",
+          () => {
+            document.querySelector("#modal").close();
+            onUse(example);
+          },
+          "ink-button",
+        ),
+      );
+    } else
+      actions.append(
+        button(
+          owned ? "Edit draft" : "Configure a copy",
+          async () => {
+            let id = example.id;
+            if (!owned)
+              id = (
+                await sendJSON("company/examples/" + example.id + "/copy", {})
+              ).id;
+            await refresh();
+            edit(getData().recipes.find((r) => r.id === id));
+          },
+          "ink-button",
+        ),
+      );
     c.append(actions);
     return c;
   }
@@ -89,7 +169,7 @@ export function createExampleStudio({
     open("Configure workflow draft", (host) => {
       help(
         host,
-        "This draft is inactive. Bind connections, replace YOUR_ placeholders and save it. Credentials belong in Connections. Sending a request starts planning through your assistant, including any missing-input questions or approvals.",
+        "Bind connections and replace YOUR_ inputs. This draft stays inactive until you send a request. Store credentials in Connections.",
       );
       const title = field(host, "Workflow title", recipe.title),
         instructions = field(
@@ -143,7 +223,7 @@ export function createExampleStudio({
       host.append(advanced);
       const status = el("p", "", "setup-status");
       host.append(status);
-      const actions = el("div", "", "connection-toolbar");
+      const actions = el("div", "", "connection-toolbar dialog-actions");
       host.append(actions);
       async function save() {
         const bindings = Object.fromEntries(
