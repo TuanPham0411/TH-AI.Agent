@@ -1,3 +1,7 @@
+import { workflowExamples } from "../site/workflow-examples.js";
+import { flowScope, sameFlow } from "../site/company-flow.js";
+import { normalizeConnection, checkConnection } from "./company-connections.js";
+import { mountDeviceOwner, deviceInvoke } from "./personal-devices.js";
 import { gatewayRequest } from "./company-v2-gateway.js";
 import { randomUUID } from "node:crypto";
 import { CompanyStore } from "./company-v2-store.js";
@@ -12,6 +16,7 @@ import {
   validateSettings,
   safePublicMessage,
   containsPrivateCredential,
+  validatePlan,
 } from "../site/company-v2-model.js";
 const uuid = (v) =>
     typeof v === "string" &&
@@ -32,6 +37,7 @@ export function mountCompanyV2(
     background = process.env.NODE_ENV === "production",
   },
 ) {
+  mountDeviceOwner(router, { pool, route });
   const runners = Array.from(
       { length: 2 },
       () =>
@@ -124,9 +130,122 @@ export function mountCompanyV2(
     }),
   );
   router.post(
+    "/company/examples/:id/copy",
+    route(async (req, res) => {
+      const original = workflowExamples.find((e) => e.id === req.params.id);
+      if (!original) fail("Choose a supplied workflow example.");
+      const id = randomUUID(),
+        value = {
+          ...original,
+          source: "personal-example",
+          originalTemplateId: original.id,
+          bindings: {},
+          automation: { enabled: false },
+        };
+      delete value.id;
+      await pool.query("INSERT INTO company_recipes(id,value) VALUES($1,$2)", [
+        id,
+        JSON.stringify(value),
+      ]);
+      res.json({ id, durable: true });
+    }),
+  );
+  router.put(
+    "/company/examples/:id",
+    route(async (req, res) => {
+      if (!uuid(req.params.id)) fail("Invalid workflow draft.");
+      const {
+        revision,
+        title,
+        instructions,
+        bindings = {},
+        procedure,
+      } = req.body || {};
+      if (
+        typeof title !== "string" ||
+        !title.trim() ||
+        title.length > 120 ||
+        typeof instructions !== "string" ||
+        instructions.length > 12000 ||
+        !bindings ||
+        typeof bindings !== "object" ||
+        Array.isArray(bindings) ||
+        containsPrivateCredential(JSON.stringify({ instructions, procedure }))
+      )
+        fail(
+          "Use bounded instructions and configure credentials in Connections, not in workflow blocks.",
+        );
+      await store.tx(async (db) => {
+        const row = (
+          await db.query(
+            "SELECT value,revision FROM company_recipes WHERE id=$1 FOR UPDATE",
+            [req.params.id],
+          )
+        ).rows[0];
+        if (
+          row?.value.source !== "personal-example" ||
+          row.revision !== revision
+        )
+          fail("Reload this editable example before saving.", 409);
+        const slots = row.value.slots || [],
+          connections = await store.connections(db);
+        if (Object.keys(bindings).some((k) => !slots.some((s) => s.key === k)))
+          fail("Choose one of this example’s connection slots.");
+        const virtual = [];
+        for (const slot of slots) {
+          const selected = bindings[slot.key];
+          if (selected) {
+            const c = connections.find(
+              (c) => c.id === selected && c.kind === slot.kind,
+            );
+            if (!c)
+              fail("Choose a matching saved connection for " + slot.name + ".");
+            if (
+              slot.action &&
+              !slot.action.startsWith("YOUR_") &&
+              c.action !== slot.action
+            )
+              fail(
+                "Choose the " + slot.action + " action for " + slot.name + ".",
+              );
+            virtual.push(c);
+          } else virtual.push({ id: slot.key, kind: slot.kind });
+        }
+        let plan;
+        try {
+          plan = validatePlan(
+            { title, steps: procedure },
+            {
+              connections: [...connections, ...virtual],
+              skills: defaultCompanySettings().skills,
+            },
+          );
+        } catch (e) {
+          fail(e.message);
+        }
+        await db.query(
+          "UPDATE company_recipes SET value=$2,revision=revision+1,updated_at=now() WHERE id=$1",
+          [
+            req.params.id,
+            JSON.stringify({
+              ...row.value,
+              title,
+              instructions,
+              bindings,
+              procedure: plan.steps,
+              draft: true,
+              automation: { enabled: false },
+            }),
+          ],
+        );
+      });
+      res.json({ saved: true, durable: true });
+    }),
+  );
+  router.post(
     "/company/messages",
     route(async (req, res) => {
-      const { text, requestId } = req.body || {};
+      const { text, requestId, recipeId } = req.body || {};
       if (
         !uuid(requestId) ||
         typeof text !== "string" ||
@@ -140,7 +259,18 @@ export function mountCompanyV2(
         fail(
           "Use the secure connection form for passwords and API keys; they must not enter conversation history.",
         );
-      const result = await store.enqueue({ requestId, text: text.trim() });
+      if (recipeId) {
+        const recipe = (await store.recipes()).find((r) => r.id === recipeId);
+        if (!recipe || recipe.source === "starter-template")
+          fail(
+            "Save your own copy of this example before requesting execution.",
+          );
+      }
+      const result = await store.enqueue({
+        requestId,
+        text: text.trim(),
+        recipeId: recipeId || null,
+      });
       res.status(result.reused ? 200 : 202).json({ ...result, durable: true });
       void tick();
     }),
@@ -200,108 +330,7 @@ export function mountCompanyV2(
       const id = req.params.id;
       if (!/^[a-z][a-z0-9_-]{0,59}$/.test(id))
         fail("Use a short connection ID, such as odssg_vn.");
-      const {
-        kind,
-        name,
-        accountId,
-        baseUrl,
-        model: mediaModel,
-        mediaType,
-        action,
-        description,
-        effect,
-        allowWrites = false,
-        allowMedia = false,
-        allowPublish = false,
-        revision = 0,
-        secret = {},
-      } = req.body || {};
-      if (
-        ![
-          "odbc",
-          "postgres",
-          "mysql",
-          "sqlserver",
-          "oracle",
-          "mongo",
-          "firestore",
-          "facebook",
-          "media",
-          "bridge",
-        ].includes(kind) ||
-        typeof name !== "string" ||
-        !name.trim() ||
-        name.length > 100 ||
-        typeof allowPublish !== "boolean"
-      )
-        fail("Choose a supported connection and name.");
-      if (kind === "facebook" && !/^\d{4,30}$/.test(accountId || ""))
-        fail(
-          "Enter the numeric Facebook Page ID. Personal-profile passwords are not supported.",
-        );
-      if (["odbc", "bridge"].includes(kind)) {
-        let u;
-        try {
-          u = new URL(baseUrl);
-        } catch {}
-        if (
-          !u ||
-          u.protocol !== "https:" ||
-          u.username ||
-          u.password ||
-          u.search ||
-          u.hash
-        )
-          fail("Use an HTTPS ODBC gateway URL without embedded secrets.");
-      }
-      if (
-        kind === "media" &&
-        (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(mediaModel || "") ||
-          !["text_to_image", "text_to_video"].includes(mediaType))
-      )
-        fail("Choose the media service owner/model ID and output type.");
-      if (
-        kind === "bridge" &&
-        (!/^[a-z][a-z0-9_-]{0,59}$/.test(action || "") ||
-          typeof description !== "string" ||
-          description.length > 3000 ||
-          !["read", "write"].includes(effect) ||
-          typeof allowWrites !== "boolean")
-      )
-        fail("Choose an approved personal action and its read/write effect.");
-      const allowed = ["key", "connectionString", "projectId"];
-      if (
-        !secret ||
-        typeof secret !== "object" ||
-        Array.isArray(secret) ||
-        Object.keys(secret).some(
-          (k) =>
-            !allowed.includes(k) ||
-            typeof secret[k] !== "string" ||
-            secret[k].length > 8000,
-        )
-      )
-        fail("Use the supported secure credential fields.");
-      const value = {
-        name: name.trim(),
-        kind,
-        ...(kind === "facebook" ? { accountId, allowPublish } : {}),
-        ...(["odbc", "bridge"].includes(kind) ? { baseUrl } : {}),
-        ...(kind === "bridge"
-          ? {
-              baseUrl,
-              action,
-              description,
-              effect,
-              allowWrites,
-              execution: "unverified",
-              unattended: false,
-            }
-          : {}),
-        ...(kind === "media"
-          ? { model: mediaModel, mediaType, allowMedia: allowMedia === true }
-          : {}),
-      };
+      const { kind, revision = 0 } = req.body || {};
       await store.tx(async (db) => {
         const old = (
           await db.query(
@@ -310,7 +339,7 @@ export function mountCompanyV2(
           )
         ).rows[0];
         if (old && old.value.kind !== kind)
-          fail("Use a new connection ID to change connection kind.");
+          fail("Use a new connection ID to change its kind.");
         if ((old?.revision || 0) !== revision)
           fail("This connection changed. Reload before saving.", 409);
         const previous =
@@ -320,42 +349,31 @@ export function mountCompanyV2(
               ["company_" + id],
             )
           ).rows[0]?.secret || {};
-        const merged = {
-          ...previous,
-          ...Object.fromEntries(
-            Object.entries(secret).filter(([, v]) => v.trim()),
-          ),
-          ...(["odbc", "bridge"].includes(kind) ? { baseUrl } : {}),
-          ...(kind === "bridge"
-            ? {
-                baseUrl,
-                action,
-                description,
-                effect,
-                allowWrites,
-                execution: "unverified",
-                unattended: false,
-              }
-            : {}),
-          ...(kind === "media"
-            ? { model: mediaModel, mediaType, allowMedia: allowMedia === true }
-            : {}),
-        };
-        if (
-          ["facebook", "odbc", "media", "bridge"].includes(kind) &&
-          !merged.key
-        )
-          fail("Provide the access token in the secure field.");
-        if (
-          ["postgres", "mysql", "sqlserver", "oracle", "mongo"].includes(
-            kind,
-          ) &&
-          !merged.connectionString
-        )
-          fail("Provide a read-only database connection in the secure field.");
+        let normalized;
+        try {
+          normalized = normalizeConnection(kind, req.body, previous);
+        } catch (error) {
+          fail(error.message);
+        }
+        const { value, secret } = normalized;
+        if (value.transport === "device") {
+          const device = (
+            await db.query(
+              "SELECT capabilities FROM company_devices WHERE id=$1 AND revoked_at IS NULL",
+              [value.deviceId],
+            )
+          ).rows[0];
+          if (!device) fail("Pair a computer first.");
+          const capability = device.capabilities.actions?.find(
+            (a) => a.id === value.action,
+          );
+          if (!capability) fail("Choose an action reported by this computer.");
+          value.effect = capability.effect;
+          secret.effect = capability.effect;
+        }
         await db.query(
           "INSERT INTO ai_credentials(id,secret) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,updated_at=now()",
-          ["company_" + id, JSON.stringify(merged)],
+          ["company_" + id, JSON.stringify(secret)],
         );
         await db.query(
           "INSERT INTO company_connections(id,value) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET value=excluded.value,revision=company_connections.revision+1,updated_at=now()",
@@ -371,22 +389,49 @@ export function mountCompanyV2(
       const connection = (await store.connections()).find(
         (c) => c.id === req.params.id,
       );
-      if (connection?.kind !== "bridge") fail("Choose a personal tool bridge.");
+      if (!connection) fail("Choose a saved connection.");
+      if (connection.kind !== "bridge") {
+        let result;
+        try {
+          result = await checkConnection(
+            connection,
+            await getSecret("company_" + connection.id),
+            { signal: AbortSignal.timeout(15000) },
+          );
+        } catch (error) {
+          fail(error.message);
+        }
+        await pool.query(
+          "UPDATE company_connections SET value=value || $2::jsonb WHERE id=$1 AND revision=$3",
+          [
+            connection.id,
+            JSON.stringify({
+              check: { ...result, at: new Date().toISOString() },
+            }),
+            connection.revision,
+          ],
+        );
+        return res.json(result);
+      }
       const secret = await getSecret("company_" + connection.id);
       if (!secret?.key) fail("Save the private bridge token first.");
       const path = "/actions/ping/invoke",
-        response = await gatewayRequest(secret.baseUrl, { path })(
-          new URL(path, secret.baseUrl),
-          {
-            method: "POST",
-            headers: {
-              Authorization: "Bearer " + secret.key,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ input: { action: connection.action } }),
-            signal: AbortSignal.timeout(20000),
-          },
-        );
+        response = secret.deviceId
+          ? await deviceInvoke(pool, secret.deviceId, "ping", {
+              action: connection.action,
+            })
+          : await gatewayRequest(secret.baseUrl, { path })(
+              new URL(path, secret.baseUrl),
+              {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + secret.key,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ input: { action: connection.action } }),
+                signal: AbortSignal.timeout(20000),
+              },
+            );
       if (
         response?.ok !== true ||
         !["server", "desktop"].includes(response.output?.execution)
@@ -478,10 +523,16 @@ export function mountCompanyV2(
           scope = operational.map((s) => ({
             tool: s.tool,
             connection: s.connection || null,
+            flow: flowScope(s),
             connectionRevision:
               connections.find((c) => c.id === s.connection)?.revision || 0,
             ...(s.toolId ? { toolId: s.toolId } : {}),
           }));
+        if (
+          enabled &&
+          (row.value.source === "starter-template" || row.value.draft)
+        )
+          fail("Run and verify this draft before enabling automation.");
         if (enabled && !scope.length)
           fail("A tested procedure is required before automation.");
         if (
@@ -515,8 +566,8 @@ export function mountCompanyV2(
           enabled &&
           scope.some(
             (s) =>
-              ["publish", "stage_python"].includes(s.tool) ||
-              (s.tool === "bridge" &&
+              ["publish", "message", "stage_python"].includes(s.tool) ||
+              (["bridge", "service"].includes(s.tool) &&
                 connections.find((c) => c.id === s.connection)?.effect !==
                   "read"),
           ) &&
@@ -578,6 +629,7 @@ export function mountCompanyV2(
               (step, i) =>
                 step.tool === scope[i]?.tool &&
                 step.connection === scope[i]?.connection &&
+                (!scope[i]?.flow || sameFlow(flowScope(step), scope[i].flow)) &&
                 (!step.connection ||
                   job.automation.scope[i]?.connectionRevision ===
                     scope[i]?.connectionRevision),

@@ -1,3 +1,4 @@
+import {deviceAgentRouter} from './personal-devices.js';
 import {codingAgents} from '../site/coding-agents.js';
 import {mountCompanyV2} from './company-v2.js';
 import {PersonnelMemory,personnelMemoryKey} from './personnel-memory.js';
@@ -40,6 +41,7 @@ export function studioRoutes({pool,request=publicRequest}={}){
  const router=express.Router(),internal=express.Router();let busy=false,lastTick=null;const controllers=new Map(),memory=new RuntimeMemory(),pendingCheckpoints=new Map(),accessTokens=new Map();
  router.use(studioFileRoutes({pool}));
  mountSharedMedia(internal,{pool});
+ internal.use(deviceAgentRouter(pool));
  const getSecret=async id=>(await pool.query('SELECT secret FROM ai_credentials WHERE id=$1',[id])).rows[0]?.secret;
  const setSecret=async(id,secret,{refresh=false}={})=>{const previous=await getSecret(id);secret={...secret,_connectionEpoch:refresh||credentialFingerprint(previous)===credentialFingerprint(secret)?(previous?._connectionEpoch||credentialFingerprint(previous)):randomUUID()};if(refresh)secret=refreshedSecret(previous,secret);else if(!secret._verification&&previous?._verification&&credentialFingerprint(previous)===credentialFingerprint(secret))secret={...secret,_verification:previous._verification};return pool.query('INSERT INTO ai_credentials(id,secret) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,updated_at=now()',[id,JSON.stringify(secret)]);};
  const saveJob=async(id,state)=>pool.query('INSERT INTO ai_media_jobs(id,state) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET state=excluded.state,updated_at=now()',[id,JSON.stringify(state)]);

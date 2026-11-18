@@ -68,3 +68,44 @@ Models and social provider responses are fixtures in automated tests. Database q
 ### Authority and installation boundary
 
 The owner may grant the bridge service account broad access to their own computer. This grant does not create network access or install an agent by itself. No laptop access, OS change or bridge installation is claimed until a reachable endpoint is actually registered. Fixed native actions execute with the granted account's permissions; source portability inspection is explicitly non-executing. Static scans and common secret filters are not a proof that arbitrary source contains no secrets or that it is safe/compatible. A real isolated server run and explicit unattended eligibility are still required.
+
+## Typed working environment (November 2026 update)
+
+Connections now use distinct contracts and setup cards, grouped as databases, network/services, social/messaging, Office/personal tools and media. Each card explains the required account, fields, scopes, execution location and supported operation. Saving a credential is not verification. A separate **Test saved connection** performs a read-only capability check; a Page/profile check does not prove publishing or messaging permission.
+
+- PostgreSQL/MySQL/SQL Server/Oracle: host, port, database/service, read-only username/password. Driver credentials are assembled in the vault. Existing URI-only credentials can be retained in Advanced setup. SQL Server requires verified encrypted transport; MySQL's structured setup uses TLS. MongoDB accepts a private database URI. Firestore requires a project and OAuth access token, not a public Firebase API key.
+- ODBC: trusted HTTPS gateway, DSN reference and gateway token. The DSN/driver/database login remain on the gateway. The DSN reference documents the destination; `/query` uses the gateway's configured DSN, not an arbitrary model-selected DSN.
+- Network: fixed HTTPS origin, operation path/method, independent health-check path and None/Bearer/Basic authentication. Only saved endpoint/method is callable. GET is read-only; POST requires write approval. A network failure after a write is uncertain and is not replayed automatically. This is not a VPN/TCP/SMB tunnel.
+- Facebook: authorized Page publishing. Messenger: separate Page/PSID messaging capability and permissions; WhatsApp Business: separate business/phone-number IDs and business token. Text/template messages return provider message receipts. Consent, app review and messaging-window rules still apply. No inbound conversation webhook/consumer-account password login is claimed.
+- TikTok: creator profile/account read only in this connector; saving a token does not enable Direct Post. Microsoft 365: read a configured Microsoft Graph resource with the appropriate access token/scopes. These manually supplied OAuth tokens expire and need renewal. Desktop Office is a separate computer action.
+
+### Outbound laptop agent
+
+**Connections → Pair / manage a computer → Create pairing token** issues a dedicated device credential shown once. It cannot authenticate to owner/workspace routes. The Windows installer downloads `personal-device.py`, `personal-bridge.py` and `office-tool.ps1`, prompts privately for the token, stores it in a user-restricted local folder and installs an interactive user logon task. Python 3.10+ is required and is not installed silently. No inbound port, laptop TLS certificate or router change is needed; the agent connects outward to the application's trusted HTTPS endpoint.
+
+Run the displayed PowerShell installer command with **-FullControl** to enable native Python/PowerShell/CMD execution and file read/write under the logged-in user's permissions. Omitting it leaves only configured actions and source inspection. This does not grant administrator elevation, make a powered-off laptop reachable, or turn desktop actions into server automation. Full control is native account-level execution, not a code sandbox or a visual remote desktop/browser-control application. To stop it locally, stop/disable the **TH Personal Device Link** startup task. **Revoke access** on the website invalidates the device token; an already executing command cannot be undone.
+
+The device advertises its enabled actions. A connection selects one actual action, with its own input contract/read-write effect. `office` supports Excel range reads and new `.xlsx` writes, and Word text reads/new `.docx` writes via COM. Installed Windows Office and an interactive session are required. Local output paths are not represented as server download URLs. Windows installer/COM integration must be verified on a real Windows machine; Linux tests verify the Python bridge and local Python/file actions, not Office COM.
+
+Device tasks and claims persist in migration **006**. A task is claimed once, with a device-bound claim key and deadline. The agent journals a claim before execution and persists the result before acknowledging it; reconnecting retries the acknowledgment, not the command. Expired/uncertain writes require outcome review. Device tokens are hashed on the server. Heartbeats do not revise automation connection scope. Device state and tasks participate in the same Drive-first capture, backup and schema-baseline recovery as the rest of the application.
+
+### Workflow visibility
+
+The live canvas now shows each actual function as a separate card: tool icon, step title, connection, execution location and state. Solid arrows show actual dependencies and execution order; a distinct mapped-data rail shows explicit upstream references. Independent branches are arranged side by side, with layer labels. Animation is tied to executing/waiting steps. The connected-tools shelf opens each tool's own setup. Fit/zoom and the step inspector help inspect arguments/evidence without a second dashboard.
+
+
+### Composed operations, branches and layers
+
+The Director can create a directed acyclic graph rather than only a linear procedure. `dependsOn` declares prerequisites; omitted dependencies retain the earlier sequential behavior, while `[]` creates an independent root. Upstream input mappings add their own prerequisites. Steps must be listed in topological order; invalid/cyclic/forward dependencies are rejected before tools run. An `operation` label groups the business meaning of a step.
+
+Each job dispatches at most two ready tools concurrently (two job workers remain available). A join waits for its branches and either collects results or concatenates actual bounded row collections. A condition compares actual upstream values using fixed operators; `when` gates a branch. Inactive branches are marked skipped and are never represented as successful tool calls. A timer checkpoints its wake time and releases the worker, so browser tabs and other jobs remain independent. This release has bounded DAGs, not arbitrary cyclic/unbounded loops or an unlimited parallel executor.
+
+All members of a frontier pass exact-effect approvals before dispatch. Outcomes are settled and committed individually: a failed/uncertain sibling does not erase confirmed results. Unknown writes are not replayed. Saved automation scope includes dependencies, operation labels and conditions; changing the graph requires renewed scope approval.
+
+### 37 inactive workflow examples
+
+The Examples library covers every tool and connection family, including seven database-to-Excel variants, CSV/JSON, source/report/media/asset tools, social/messaging, Office and native desktop tools, portability migration, and combined conditional/parallel/delay operations. Migration 006 adds the initial example definitions without creating jobs or enabling automation. Definitions are idempotent and do not overwrite owner edits.
+
+Preview is a configuration view, with pending/example labels; it never calls a model or executes tools. Configure a copy, bind existing connections, replace `YOUR_` placeholders and edit step inputs/dependencies/conditions in its JSON section. Saved copies remain drafts with automation off. Prepare a request sends the saved procedure through the assistant/Director clarification and approval flow. Only a successful real run turns a draft into a verified reusable workflow eligible for automation.
+
+Reports can use `from` and an instruction to author content only after actual upstream evidence exists. This calls the same Director, within the existing model-call budget, rather than inventing analysis in a report prepared before data was retrieved. Truncated evidence is marked for the Director.
