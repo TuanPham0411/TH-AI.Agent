@@ -210,3 +210,167 @@ test(
     await new Promise((r) => child.once("exit", r));
   },
 );
+
+test(
+  "native ODBC crosses the outbound agent, keeps credentials out of durable task inputs and exports actual DSN rows",
+  {
+    skip: !process.env.TEST_DATABASE_URL || !process.env.TH_ODBC_REAL_TEST_DSN,
+    timeout: 45000,
+  },
+  async (t) => {
+    const f = await companyFixture(process.env.TEST_DATABASE_URL);
+    t.after(() => f.close());
+    const dir = await mkdtemp(path.join(os.tmpdir(), "th-odbc-device-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    execFileSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-days",
+        "1",
+        "-subj",
+        "/CN=localhost",
+        "-addext",
+        "subjectAltName=DNS:localhost",
+        "-keyout",
+        path.join(dir, "key.pem"),
+        "-out",
+        path.join(dir, "cert.pem"),
+      ],
+      { stdio: "ignore" },
+    );
+    const app = express();
+    app.use(deviceAgentRouter(f.pool));
+    const server = https
+      .createServer(
+        {
+          key: await readFile(path.join(dir, "key.pem")),
+          cert: await readFile(path.join(dir, "cert.pem")),
+        },
+        app,
+      )
+      .listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    t.after(() => new Promise((r) => server.close(r)));
+    const created = (
+      await f.json("company/devices", { name: "ODBC test client" })
+    ).value;
+    await writeFile(
+      path.join(dir, "device.json"),
+      JSON.stringify({
+        server: "https://localhost:" + server.address().port,
+        token: created.token,
+        execution: "desktop",
+        enableOdbc: true,
+        fullControl: false,
+        roots: { home: dir },
+        actions: {},
+      }),
+    );
+    const child = spawn(
+      "python3",
+      ["tools/personal-device.py", "--config", path.join(dir, "device.json")],
+      {
+        env: {
+          ...process.env,
+          SSL_CERT_FILE: path.join(dir, "cert.pem"),
+          NO_PROXY: "localhost,127.0.0.1",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    t.after(() => child.kill());
+    let output = "";
+    child.stdout.on("data", (b) => (output += b));
+    child.stderr.on("data", (b) => (output += b));
+    let device;
+    for (let i = 0; i < 100; i++) {
+      device = (await f.json("company/devices")).value.devices[0];
+      if (device.online) break;
+      await wait();
+    }
+    assert(device.online, output);
+    assert(device.capabilities.odbc.available);
+    assert(
+      device.capabilities.odbc.dataSources.some(
+        (s) => s.name === process.env.TH_ODBC_REAL_TEST_DSN,
+      ),
+    );
+    const save = await f.json(
+      "company/connections/native_odbc",
+      {
+        kind: "odbc",
+        name: "Actual SQLite ODBC",
+        transport: "device",
+        deviceId: created.id,
+        dsn: process.env.TH_ODBC_REAL_TEST_DSN,
+        dialect: "other",
+        auth: "credentials",
+        secret: {
+          username: "fixture-private-reader",
+          password: "fixture-private-database-secret",
+        },
+      },
+      "PUT",
+    );
+    assert.equal(save.status, 200, JSON.stringify(save.value));
+    const { createCompanyTools } = await import(
+      "../server/company-v2-tools.js"
+    );
+    const { CompanyStore } = await import("../server/company-v2-store.js");
+    const tools = createCompanyTools({
+        pool: f.pool,
+        getSecret: f.getSecret,
+        root: f.root,
+      }),
+      connections = await new CompanyStore(f.pool).connections();
+    const result = await tools(
+      {
+        tool: "query",
+        connection: "native_odbc",
+        args: {
+          query: "SELECT code,amount FROM documents WHERE code LIKE ?",
+          parameters: ["%10-ADU8%"],
+          limit: 10,
+        },
+      },
+      { connections, steps: [], signal: AbortSignal.timeout(15000) },
+    );
+    assert.equal(result.rowCount, 1);
+    assert.equal(result.rows[0].code, "10-ADU8-001");
+    assert.equal(result.readOnly, true);
+    const tasks = (
+      await f.pool.query("SELECT input,output FROM company_device_tasks")
+    ).rows;
+    assert(!JSON.stringify(tasks).includes("fixture-private-database-secret"));
+    assert(!JSON.stringify(tasks).includes("fixture-private-reader"));
+    assert(!JSON.stringify(tasks).includes("_credential"));
+    const exported = await tools(
+      {
+        tool: "export",
+        args: { from: "step-1", format: "xlsx", name: "actual-odbc.xlsx" },
+      },
+      {
+        connections,
+        steps: [{ id: "step-1", state: "completed", result }],
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    const file = exported.files[0];
+    assert(
+      (await readFile(path.join(f.root, file.path))).includes(
+        Buffer.from("10-ADU8-001"),
+      ),
+    );
+    const check = await f.json("company/connections/native_odbc/check", {});
+    assert.equal(check.status, 200, JSON.stringify(check.value));
+    assert.equal(check.value.verified, true);
+    assert.equal(check.value.unattended, false);
+    child.kill();
+    await new Promise((r) => child.once("exit", r));
+  },
+);

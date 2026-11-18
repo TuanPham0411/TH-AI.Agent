@@ -502,7 +502,10 @@ export class CompanyRunner {
             ).length;
             for (const s of job.steps) {
               const c = connections.find((c) => c.id === s.connection);
-              s.deviceLock = c?.kind === "bridge" ? c.deviceId || c.id : null;
+              s.deviceLock =
+                c?.kind === "bridge" || c?.transport === "device"
+                  ? c.deviceId || c.id
+                  : null;
             }
             const frontier = readySteps(job.steps);
             if (
@@ -555,7 +558,9 @@ export class CompanyRunner {
               }
               if (
                 job.automation &&
-                connection?.kind === "bridge" &&
+                (connection?.kind === "bridge" ||
+                  (connection?.kind === "odbc" &&
+                    connection.transport === "device")) &&
                 (connection.execution !== "server" ||
                   !connection.unattended ||
                   !connection.verifiedAt ||

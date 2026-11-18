@@ -1,3 +1,6 @@
+import { discoverModels } from "./model-catalog.js";
+import { publicRequest } from "./studio-providers.js";
+import { createHash } from "node:crypto";
 import { workflowExamples } from "../site/workflow-examples.js";
 import { flowScope, sameFlow } from "../site/company-flow.js";
 import { normalizeConnection, checkConnection } from "./company-connections.js";
@@ -32,6 +35,7 @@ export function mountCompanyV2(
     getSecret,
     setSecret,
     model,
+    catalogRequest = publicRequest,
     tool,
     store = new CompanyStore(pool),
     background = process.env.NODE_ENV === "production",
@@ -306,6 +310,58 @@ export function mountCompanyV2(
       res.json({ settings: next, durable: true });
     }),
   );
+  const modelLists = new Map();
+  router.get(
+    "/company/models/:slot/:provider",
+    route(async (req, res) => {
+      const { slot, provider } = req.params;
+      if (
+        !["assistant", "director"].includes(slot) ||
+        !["openai", "anthropic", "gemini"].includes(provider)
+      )
+        fail("Choose an AI role and supported provider.");
+      const secret =
+        (await getSecret("company_ai_" + slot + "_" + provider)) ||
+        (await getSecret(provider));
+      if (!secret?.key)
+        fail(
+          "Save the private " +
+            provider +
+            " key for " +
+            slot +
+            " before loading its models.",
+        );
+      const cacheKey =
+        provider + ":" + createHash("sha256").update(secret.key).digest("hex");
+      let entry = modelLists.get(cacheKey);
+      if (
+        !entry ||
+        Date.now() - entry.at > 60000 ||
+        (req.query.refresh === "1" && Date.now() - entry.at > 30000)
+      ) {
+        let data;
+        try {
+          const signal = AbortSignal.timeout(15000);
+          data = await discoverModels(provider, secret, (url, options) =>
+            catalogRequest(url, { ...options, signal }),
+          );
+        } catch {
+          fail(
+            "Could not refresh the provider model list. Check this role’s API key, project access and network; your chosen model is unchanged.",
+          );
+        }
+        entry = { at: Date.now(), data };
+        modelLists.set(cacheKey, entry);
+        if (modelLists.size > 20)
+          modelLists.delete(modelLists.keys().next().value);
+      }
+      res.set("Cache-Control", "no-store").json({
+        ...entry.data,
+        refreshIntervalSeconds: 300,
+        cacheAgeSeconds: Math.floor((Date.now() - entry.at) / 1000),
+      });
+    }),
+  );
   router.put(
     "/company/model-key/:slot",
     route(async (req, res) => {
@@ -396,7 +452,12 @@ export function mountCompanyV2(
           result = await checkConnection(
             connection,
             await getSecret("company_" + connection.id),
-            { signal: AbortSignal.timeout(15000) },
+            {
+              pool,
+              signal: AbortSignal.timeout(
+                connection.transport === "device" ? 55000 : 15000,
+              ),
+            },
           );
         } catch (error) {
           fail(error.message);
@@ -407,6 +468,13 @@ export function mountCompanyV2(
             connection.id,
             JSON.stringify({
               check: { ...result, at: new Date().toISOString() },
+              ...(connection.transport === "device"
+                ? {
+                    verifiedAt: new Date().toISOString(),
+                    execution: result.execution,
+                    unattended: false,
+                  }
+                : {}),
             }),
             connection.revision,
           ],
@@ -540,7 +608,8 @@ export function mountCompanyV2(
           scope.some((s) => {
             const c = connections.find((c) => c.id === s.connection);
             return (
-              c?.kind === "bridge" &&
+              (c?.kind === "bridge" ||
+                (c?.kind === "odbc" && c.transport === "device")) &&
               (c.execution !== "server" ||
                 !c.unattended ||
                 !c.verifiedAt ||

@@ -20,6 +20,12 @@ bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 
 
+_odbc_spec = importlib.util.spec_from_file_location('th_odbc', pathlib.Path(__file__).with_name('personal-odbc.py'))
+odbc = importlib.util.module_from_spec(_odbc_spec)
+_odbc_spec.loader.exec_module(odbc)
+_inventory = {'at': 0, 'value': None}
+
+
 def capabilities(config):
     actions = [
         {'id': 'list_folder', 'effect': 'read', 'description': 'List a folder without executing code. Input {root:"home",folder:"relative path"}.'},
@@ -28,6 +34,14 @@ def capabilities(config):
     ]
     for name, definition in config.get('actions', {}).items():
         actions.append({'id': name, 'effect': definition.get('effect', 'write'), 'description': definition.get('description', 'Owner-configured action.'), 'unattended': bool(definition.get('unattended'))})
+    odbc_info = None
+    if config.get('enableOdbc') is True:
+        if time.monotonic() - _inventory['at'] > 15 or _inventory['value'] is None:
+            _inventory.update(at=time.monotonic(), value=odbc.inventory())
+        odbc_info = _inventory['value']
+        actions.append({'id': 'odbc_inventory', 'effect': 'read', 'description': 'Read local ODBC driver/DSN names and Python bitness without opening a database.'})
+        if odbc_info['available']:
+            actions.append({'id': 'odbc_query', 'effect': 'read', 'description': 'Read-only parameterized query through a configured local DSN. Database credentials are injected privately by the server, never by model input.'})
     if config.get('fullControl') is True:
         actions.extend([
             {'id': 'read_file', 'effect': 'read', 'description': 'Read UTF-8 text on this computer using account permissions. Input {path:"absolute file path"}; up to 300 KB.'},
@@ -36,7 +50,7 @@ def capabilities(config):
         ])
         if platform.system() == 'Windows':
             actions.append({'id': 'office', 'effect': 'write', 'description': 'Desktop Office COM via logged-in Windows user; installed Office required. Input {app:"excel|word",operation:"read|write",path:"absolute document path",sheet:"Sheet1",range:"A1:C10",values:[[...]],text:"document text",overwrite:false}. Excel writes start at A1, supports up to 200 rows. Word reads/writes document text. Returns local path/data, not a server download.'})
-    return {'platform': platform.system(), 'execution': config.get('execution', 'desktop'), 'unattended': False, 'fullControl': config.get('fullControl') is True, 'roots': list(config.get('roots', {})), 'actions': actions}
+    return {'platform': platform.system(), 'execution': config.get('execution', 'desktop'), 'unattended': False, 'fullControl': config.get('fullControl') is True, 'roots': list(config.get('roots', {})), 'actions': actions, 'odbc': odbc_info}
 
 
 def local_path(value):
@@ -47,6 +61,10 @@ def local_path(value):
 
 
 def invoke(config, action, value):
+    if action in {'odbc_inventory', 'odbc_query'}:
+        if config.get('enableOdbc') is not True:
+            raise ValueError('ODBC access was not enabled locally. Re-run the installer with -EnableOdbc.')
+        return odbc.inventory() if action == 'odbc_inventory' else odbc.query(value)
     full = config.get('fullControl') is True
     if action in {'read_file', 'write_file', 'execute', 'office'} and not full:
         raise ValueError('Full computer control was not granted in the local agent settings.')

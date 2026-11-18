@@ -228,3 +228,33 @@ test("DAG validation rejects forward dependencies, unsafe conditions and preserv
     ),
   );
 });
+
+test("paired ODBC setup uses a device/DSN rather than an invented gateway and keeps database credentials private", () => {
+  const body = {
+    name: "Oracle on laptop",
+    transport: "device",
+    deviceId: "00000000-0000-4000-8000-000000000001",
+    dsn: "odssg_vn",
+    dialect: "oracle",
+    auth: "credentials",
+    secret: { username: "private-reader", password: "private-password" },
+  };
+  const r = normalizeConnection("odbc", body);
+  assert.equal(r.value.deviceId, body.deviceId);
+  assert.equal(r.value.action, "odbc_query");
+  assert.equal(r.value.baseUrl, undefined);
+  assert.equal(r.value.unattended, false);
+  assert(!JSON.stringify(r.value).includes("private-reader"));
+  assert(!JSON.stringify(r.value).includes("private-password"));
+  assert.equal(r.secret.password, "private-password");
+  const edit = normalizeConnection(
+    "odbc",
+    { ...body, secret: { username: "", password: "" } },
+    r.secret,
+  );
+  assert.equal(edit.secret.password, "private-password");
+  assert.throws(
+    () => normalizeConnection("odbc", { ...body, dsn: "x;PWD=bad" }),
+    /DSN/,
+  );
+});

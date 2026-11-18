@@ -80,6 +80,9 @@ try {
     .getByRole("button", { name: "Set up odbc", exact: true })
     .waitFor();
   await page.getByRole("button", { name: "Set up odbc", exact: true }).click();
+  await page
+    .getByLabel("ODBC connection method", { exact: true })
+    .selectOption("https");
   assert.equal(
     await page.getByLabel("Connection ID", { exact: true }).inputValue(),
     "odssg_vn",

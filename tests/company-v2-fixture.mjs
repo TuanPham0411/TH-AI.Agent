@@ -176,6 +176,26 @@ export async function companyFixture(databaseURL) {
     getSecret,
     setSecret,
     model,
+    catalogRequest: async (url) =>
+      String(url).includes("generativelanguage")
+        ? {
+            models: [
+              {
+                name: "models/fixture-gemini-latest",
+                displayName: "Fixture Gemini latest",
+                version: "2026-test",
+                supportedGenerationMethods: ["generateContent"],
+                inputTokenLimit: 100000,
+              },
+            ],
+          }
+        : String(url).includes("anthropic")
+          ? {
+              data: [
+                { id: "claude-fixture-latest", display_name: "Fixture Claude" },
+              ],
+            }
+          : { data: [{ id: "gpt-fixture-latest", created: 999 }] },
     tool: tools,
     background: false,
   });
