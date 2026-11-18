@@ -7,7 +7,11 @@ import {
   validatePlan,
   validateSettings,
 } from "../site/company-v2-model.js";
-import { payloadHash, resolveToolStep } from "../server/company-v2-tools.js";
+import {
+  payloadHash,
+  resolveToolStep,
+  createCompanyTools,
+} from "../server/company-v2-tools.js";
 import { exportRows } from "../server/company-v2-xlsx.js";
 class MemoryStore {
   constructor() {
@@ -492,4 +496,27 @@ test("unattended approval cannot be expanded into repeated publications by a fre
   await runner.tick();
   assert.equal(writes, 0);
   assert.equal((await store.get(id)).state, "waiting_input");
+});
+
+test("a personal write tool with a lost response is uncertain while a read tool can request correction", async () => {
+  const tool = createCompanyTools({
+    pool: {},
+    getSecret: async () => ({ key: "fixture", baseUrl: "https://fixture" }),
+    gateway: () => async () => {
+      throw Error("connection lost");
+    },
+  });
+  const step = { tool: "bridge", connection: "desktop", args: { input: {} } },
+    connections = [
+      { id: "desktop", kind: "bridge", action: "report", effect: "write" },
+    ];
+  await assert.rejects(
+    tool(step, { connections, steps: [] }),
+    (e) => e.uncertain === true,
+  );
+  connections[0].effect = "read";
+  await assert.rejects(
+    tool(step, { connections, steps: [] }),
+    (e) => !e.uncertain,
+  );
 });

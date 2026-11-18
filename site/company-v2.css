@@ -936,3 +936,32 @@ dialog h2 {
 .flow-step.waiting_external {
   animation: work-breathe 2.8s ease-in-out infinite;
 }
+.approval-preview {
+  padding: 14px 16px;
+  margin: 15px 0;
+  border: 1px solid #ded4b5;
+  background: #fffcf0;
+  border-radius: 10px;
+}
+.approval-preview blockquote {
+  margin: 14px 0;
+  font-size: 13px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+.approval-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 8px;
+  margin: 13px 0;
+}
+.approval-preview summary {
+  font-size: 9px;
+  color: #9d9675;
+  cursor: pointer;
+}
+.approval-preview a {
+  font-size: 11px;
+  color: #7b8e54;
+}

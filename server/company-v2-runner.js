@@ -524,7 +524,9 @@ export class CompanyRunner {
                 job.question =
                   (step.tool === "media"
                     ? "Media generation may incur provider charges. Approve this exact request for "
-                    : "The content is ready. Approve this exact publication for ") +
+                    : step.tool === "publish"
+                      ? "The content is ready. Approve this exact publication for "
+                      : "Approve this tool action on ") +
                   (connection?.name || "the selected destination") +
                   ".";
                 await this.store.tx(async (db) => {
@@ -534,6 +536,7 @@ export class CompanyRunner {
                 return;
               }
             }
+            step.effect = effect;
             step.state = "executing";
             await this.update(job, "Executing · " + step.title);
             let result;
