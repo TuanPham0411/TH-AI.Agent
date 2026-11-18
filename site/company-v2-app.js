@@ -321,16 +321,43 @@ function render() {
       el("p", selected.question || "I need one detail to continue."),
     );
     if (selected.state === "waiting_approval") {
-      card.append(
-        el("strong", selected.approval?.connection || ""),
-        el("pre", JSON.stringify(selected.approval?.payload, null, 2)),
+      const payload = selected.approval?.payload || {},
+        preview = el("div", "", "approval-preview");
+      preview.append(el("strong", selected.approval?.connection || ""));
+      if (payload.caption || payload.prompt)
+        preview.append(el("blockquote", payload.caption || payload.prompt));
+      if (payload.imageUrl) {
+        const image = el("img");
+        image.src = payload.imageUrl;
+        image.alt = "Prepared publication visual";
+        image.loading = "lazy";
+        image.referrerPolicy = "no-referrer";
+        preview.append(image);
+      }
+      if (payload.videoUrl) {
+        const link = el("a", "Review prepared video →");
+        link.href = payload.videoUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        preview.append(link);
+      }
+      const technical = el("details");
+      technical.append(
+        el("summary", "Exact action details"),
+        el("pre", JSON.stringify(payload, null, 2)),
       );
+      preview.append(technical);
+      card.append(preview);
       card.append(
         button(
-          selected.steps.find((s) => s.id === selected.approval?.stepId)
-            ?.tool === "media"
-            ? "Approve generation & charges"
-            : "Approve this publication",
+          {
+            media: "Approve generation & charges",
+            publish: "Approve this publication",
+            stage_python: "Approve transfer to server",
+            bridge: "Approve this tool action",
+          }[
+            selected.steps.find((s) => s.id === selected.approval?.stepId)?.tool
+          ] || "Approve this action",
           () => respond("approve"),
           "ink-button",
         ),

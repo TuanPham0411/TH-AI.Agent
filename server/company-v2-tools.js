@@ -181,21 +181,36 @@ export function createCompanyTools({
         throw Error("Connect the personal tool bridge securely first.");
       const path =
         "/actions/" + encodeURIComponent(connection.action) + "/invoke";
-      const result = await gateway(secret.baseUrl, { path })(
-        new URL(path, secret.baseUrl),
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + secret.key,
-            "Content-Type": "application/json",
+      let result;
+      try {
+        result = await gateway(secret.baseUrl, { path })(
+          new URL(path, secret.baseUrl),
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + secret.key,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ input: args.input || {} }),
+            signal,
           },
-          body: JSON.stringify({ input: args.input || {} }),
-          signal,
-        },
-      );
+        );
+      } catch (error) {
+        if (connection.effect !== "read")
+          throw Object.assign(
+            Error(
+              "The local tool outcome could not be confirmed. Check its actual result before retrying; I will not repeat the action automatically.",
+            ),
+            { uncertain: true },
+          );
+        throw error;
+      }
       if (result?.ok !== true)
-        throw Error(
-          "The personal tool did not confirm completion. Check its service account, paths and action configuration.",
+        throw Object.assign(
+          Error(
+            "The personal tool did not confirm completion. Check its service account, paths and actual result.",
+          ),
+          { uncertain: connection.effect !== "read" },
         );
       return result.output;
     }

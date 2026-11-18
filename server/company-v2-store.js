@@ -255,11 +255,16 @@ export class CompanyStore {
         if (job.state !== "running" || job.leaseUntil >= Date.now()) return;
         const effect = job.steps.find(
           (s) =>
-            s.state === "executing" && ["publish", "media"].includes(s.tool),
+            s.state === "executing" &&
+            (["write", "paid"].includes(s.effect) ||
+              (!s.effect &&
+                ["publish", "media", "bridge", "stage_python"].includes(
+                  s.tool,
+                ))),
         );
         job.state = effect ? "uncertain" : "waiting_input";
         job.question = effect
-          ? "The worker stopped after a publishing intent. Check Facebook before deciding whether to retry; I will not post a duplicate automatically."
+          ? "The worker stopped after an external action intent. Check the destination/tool before deciding whether to retry; I will not repeat the action automatically."
           : "Processing was interrupted. Your request and confirmed steps are saved. Continue when ready; completed steps will not repeat.";
         await this.save(job, db);
         await this.say(job, job.question, db);
