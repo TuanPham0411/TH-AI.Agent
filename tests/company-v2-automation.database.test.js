@@ -129,6 +129,25 @@ test(
     );
     assert.equal(recipe.automation.enabled, false);
     assert.match(recipe.automation.pauseReason, /input|approval/);
+    const renewed = await f.json(
+      "company/recipes/" + recipe.id + "/automation",
+      {
+        revision: recipe.revision,
+        enabled: true,
+        intervalMinutes: 30,
+        maxRunsPerDay: 2,
+        maxCalls: 2,
+      },
+      "PUT",
+    );
+    assert.equal(renewed.status, 200);
+    await f.settle(changed.id, "completed");
+    assert.equal(f.state.queries, 3);
+    await store.schedule();
+    const active = (await f.json("company/workspace")).value.recipes.find(
+      (r) => r.id === recipe.id,
+    );
+    assert.equal(active.automation.enabled, true);
   },
 );
 test(

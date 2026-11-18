@@ -548,6 +548,81 @@ export function mountCompanyV2(
             runs: 0,
           },
         };
+        if (enabled) {
+          const waiting = (
+            await db.query(
+              "SELECT id,revision,state,value FROM company_jobs WHERE value->>'recipeId'=$1 AND value ? 'automation' AND state IN ('waiting_input','waiting_approval','uncertain') FOR UPDATE",
+              [req.params.id],
+            )
+          ).rows;
+          const unresolved = waiting.find((job) =>
+            ["waiting_approval", "uncertain"].includes(job.state),
+          );
+          if (unresolved) {
+            const message =
+              "Resolve the pending approval or uncertain external outcome with me before enabling further scheduled runs.";
+            await store.say({ id: unresolved.id }, message, db);
+            return { refused: true, message };
+          }
+          for (const row of waiting) {
+            const job = {
+                ...row.value,
+                id: row.id,
+                revision: row.revision,
+                state: row.state,
+              },
+              confirmed = job.steps.filter(
+                (step) => step.state === "completed",
+              );
+            const compatible = confirmed.every(
+              (step, i) =>
+                step.tool === scope[i]?.tool &&
+                step.connection === scope[i]?.connection &&
+                (!step.connection ||
+                  job.automation.scope[i]?.connectionRevision ===
+                    scope[i]?.connectionRevision),
+            );
+            if (compatible) {
+              job.state = "queued";
+              job.phase = "director";
+              job.steps = confirmed;
+              job.calls = 0;
+              job.budgetUsed = false;
+              job.question = null;
+              job.needs = null;
+              job.approval = null;
+              job.automation = {
+                ...job.automation,
+                scope,
+                allowWrites,
+                allowMedia,
+                maxCalls,
+                renewedAt: new Date().toISOString(),
+              };
+              job.events = [
+                ...(job.events || []),
+                {
+                  at: new Date().toISOString(),
+                  text: "Approved automation settings renewed; confirmed work retained",
+                },
+              ];
+              await store.save(job, db);
+              await store.say(
+                job,
+                "The approved automation settings are updated. I am continuing the saved work without replaying confirmed steps.",
+                db,
+              );
+            } else {
+              job.state = "cancelled";
+              await store.save(job, db);
+              await store.say(
+                job,
+                "The saved results are retained. Because completed work used an older scope, the next scheduled run will start fresh with the newly approved settings.",
+                db,
+              );
+            }
+          }
+        }
         await db.query(
           "UPDATE company_recipes SET value=$2,revision=revision+1,updated_at=now() WHERE id=$1",
           [req.params.id, JSON.stringify(value)],
