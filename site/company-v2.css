@@ -2068,3 +2068,8 @@ dialog.has-actions {
 .signal-particle { filter:drop-shadow(0 0 5px #00bfe9); pointer-events:none; }
 .flow-empty-detail { fill:#526e7a; font-size:13px; }
 @media(prefers-reduced-motion:reduce){.signal-particle{display:none;}}
+.history-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:12px 0; }
+.history-thread-list { display:grid; gap:10px; margin:8px 0 16px; }
+.history-thread { display:flex; gap:16px; align-items:center; padding:12px 16px; border:1px solid #d8e3e5; border-radius:8px; background:#f8fbfc; min-width:0; }
+.history-thread .manager-row-link { display:block; min-width:0; overflow-wrap:anywhere; line-height:1.5; }
+.history-thread .quiet-button { flex-shrink:0; }
