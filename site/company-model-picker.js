@@ -29,7 +29,7 @@ export function attachModelPicker({
     meta.textContent = selected
       ? [
           selected.name || selected.id,
-          "Version: " + (selected.version || "not reported"),
+          ...(selected.version ? ["Version: " + selected.version] : []),
           ...(selected.inputTokenLimit
             ? ["Input limit: " + selected.inputTokenLimit]
             : []),
@@ -77,8 +77,7 @@ export function attachModelPicker({
           new Option(
             (item.name || item.id) +
               (item.version ? " · " + item.version : "") +
-              " — " +
-              item.id,
+              (item.name && item.name !== item.id ? " — " + item.id : ""),
             item.id,
           ),
         );

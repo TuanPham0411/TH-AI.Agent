@@ -108,7 +108,26 @@ export class CompanyRunner {
       await this.store.say(job, job.question, db);
     });
   }
+  async checkpoint(job) {
+    const action = await this.store.takeControl?.(job.id);
+    if (!action) return;
+    delete job.controlRequest;
+    if (action === "pause" && job.paused) return;
+    if (action === "pause") {
+      job.resumeState = job.state === "running" ? "queued" : job.state;
+      job.paused = true;
+      job.state = "waiting_input";
+    } else job.state = "cancelled";
+    await this.update(
+      job,
+      action === "pause"
+        ? "Paused at a safe boundary; confirmed results retained"
+        : "Stopped; confirmed results retained",
+    );
+    throw Object.assign(Error("Work control applied"), { workControl: true });
+  }
   async ask(job, slot, settings, context, system) {
+    await this.checkpoint(job);
     if (
       job.calls >=
       Math.min(settings.policy.maxCalls, job.automation?.maxCalls || 12)
@@ -170,6 +189,7 @@ export class CompanyRunner {
   }
   async work(job) {
     try {
+      await this.checkpoint(job);
       let settings = await this.store.settings(),
         connections = await this.store.connections();
       if (job.phase === "assistant") {
@@ -273,6 +293,7 @@ export class CompanyRunner {
           await this.pause(job);
           return;
         }
+        await this.checkpoint(job);
         settings = await this.store.settings();
         connections = await this.store.connections();
         if (job.phase === "director") {
@@ -473,6 +494,7 @@ export class CompanyRunner {
                 "The new plan changes the approved automation sequence or action count. Review a new workflow version before continuing.",
               );
           }
+          job.planReviewed = false;
           job.title = plan.title;
           job.steps = [...job.steps.filter(terminalStep), ...plan.steps];
           if (job.steps.length > 24)
@@ -491,8 +513,24 @@ export class CompanyRunner {
             ),
           );
         }
+        if (
+          job.reviewPlan &&
+          !job.automation &&
+          !job.planReviewed &&
+          job.phase === "execute"
+        ) {
+          job.paused = true;
+          job.resumeState = "queued";
+          job.planReviewed = true;
+          await this.wait(
+            job,
+            "The workflow is ready for review. Select a block to inspect its inputs, use Edit workflow to change pending steps, then Resume to run the tools.",
+          );
+          return;
+        }
         if (job.phase === "execute") {
           while (!job.steps.every(terminalStep)) {
+            await this.checkpoint(job);
             if (this.stopping) {
               await this.pause(job);
               return;
@@ -743,6 +781,7 @@ export class CompanyRunner {
             if (failure) throw failure;
           }
 
+          await this.checkpoint(job);
           if (
             job.automation &&
             job.steps.filter(terminalStep).length < job.automation.scope.length
@@ -893,6 +932,7 @@ export class CompanyRunner {
         { budget: true },
       );
     } catch (error) {
+      if (error.workControl) return;
       await this.wait(
         job,
         error.setup
@@ -912,6 +952,14 @@ export class CompanyRunner {
           budgetUsed: !!error.budget,
         },
       );
+    } finally {
+      if (!["completed", "cancelled"].includes(job.state)) {
+        try {
+          await this.checkpoint(job);
+        } catch (error) {
+          if (!error.workControl) throw error;
+        }
+      } else await this.store.clearControl?.(job.id);
     }
   }
 }

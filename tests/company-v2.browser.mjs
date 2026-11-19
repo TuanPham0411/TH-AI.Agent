@@ -105,6 +105,10 @@ try {
   const file = page
     .locator(".assistant-message .delivered-files a")
     .filter({ hasText: "documents-10-ADU8.xlsx" });
+  await page
+    .locator(".workflow-controls")
+    .getByRole("button", { name: "Resume", exact: true })
+    .click();
   await file.waitFor();
   const downloading = page.waitForEvent("download");
   await file.click();
@@ -203,6 +207,10 @@ try {
   await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page
     .getByRole("button", { name: "Connection updated — continue", exact: true })
+    .click();
+  await page
+    .locator(".workflow-controls")
+    .getByRole("button", { name: "Resume", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Approve this publication", exact: true })

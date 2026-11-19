@@ -141,6 +141,21 @@ export function companyScene(
             : "Preparing workflow…",
       ),
     );
+    if (job?.state === "waiting_input" || job?.state === "waiting_approval") {
+      const text = n("text", {
+        x: 500,
+        y: 190,
+        "text-anchor": "middle",
+        class: "flow-empty-detail",
+      });
+      for (const [i, line] of textLines(
+        job.question ||
+          "Open the assistant to provide the missing setup or information.",
+        85,
+      ).entries())
+        text.append(n("tspan", { x: 500, dy: i ? 20 : 0 }, line));
+      svg.append(text);
+    }
     return svg;
   }
   const { positions, groups } = layout;
@@ -191,6 +206,21 @@ export function companyScene(
         ),
       );
       svg.append(path);
+      if (active) {
+        const glow = n("circle", {
+          r: 3,
+          class: "signal-particle",
+          fill: "#baf7ff",
+        });
+        glow.append(
+          n("animateMotion", {
+            dur: "1.8s",
+            repeatCount: "indefinite",
+            path: path.getAttribute("d"),
+          }),
+        );
+        svg.append(glow);
+      }
     }
     for (const ref of references(s.args)) {
       const source = positions.get(ref);

@@ -1,3 +1,4 @@
+import { mountWorkManagement } from "./company-work-management.js";
 import { discoverModels } from "./model-catalog.js";
 import { publicRequest } from "./studio-providers.js";
 import { createHash } from "node:crypto";
@@ -81,6 +82,7 @@ export function mountCompanyV2(
     timer.unref();
     setTimeout(tick, 100).unref();
   }
+  mountWorkManagement(router, { store, pool, route, tick });
   router.get(
     "/company/workspace",
     route(async (req, res) => {
@@ -272,6 +274,7 @@ export function mountCompanyV2(
       }
       const result = await store.enqueue({
         requestId,
+        reviewPlan: req.body.reviewPlan === true,
         text: text.trim(),
         recipeId: recipeId || null,
       });
@@ -664,14 +667,14 @@ export function mountCompanyV2(
             allowMedia,
             scope,
             nextRunAt: Date.now() + intervalMinutes * 60000,
-            day: null,
-            runs: 0,
+            day: row.value.automation?.day || null,
+            runs: row.value.automation?.runs || 0,
           },
         };
         if (enabled) {
           const waiting = (
             await db.query(
-              "SELECT id,revision,state,value FROM company_jobs WHERE value->>'recipeId'=$1 AND value ? 'automation' AND state IN ('waiting_input','waiting_approval','uncertain') FOR UPDATE",
+              "SELECT id,revision,state,value FROM company_jobs WHERE value->>'recipeId'=$1 AND value ? 'automation' AND coalesce(value->>'paused','false')<>'true' AND state IN ('waiting_input','waiting_approval','uncertain') FOR UPDATE",
               [req.params.id],
             )
           ).rows;
@@ -748,7 +751,7 @@ export function mountCompanyV2(
           "UPDATE company_recipes SET value=$2,revision=revision+1,updated_at=now() WHERE id=$1",
           [req.params.id, JSON.stringify(value)],
         );
-        if (!enabled)
+        if (!enabled && req.body.preserveQueued !== true)
           await db.query(
             "UPDATE company_jobs SET state='cancelled',revision=revision+1 WHERE state='queued' AND value->>'recipeId'=$1 AND value ? 'automation'",
             [req.params.id],
@@ -829,6 +832,7 @@ export function mountCompanyV2(
       const job = await store.tx(async (db) => {
         const job = await store.get(req.params.id, db, true);
         if (!job) fail("Work not found.", 404);
+        if (job.paused) fail("Resume this paused work before replying.", 409);
         if (job.revision !== revision)
           fail("This work changed. Refresh before continuing.", 409);
         if (action === "cancel") {
