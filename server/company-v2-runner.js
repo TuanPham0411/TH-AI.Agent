@@ -718,6 +718,14 @@ export class CompanyRunner {
               if (outcome.status === "rejected") {
                 const error = outcome.reason;
                 step.state = error.uncertain ? "uncertain" : "blocked";
+                step.failure = {
+                  message: error.facebookDiagnostic
+                    ? error.message
+                    : "The tool did not return a confirmed result. See the assistant for the next action.",
+                  ...(error.facebookDiagnostic
+                    ? { diagnostic: error.facebookDiagnostic }
+                    : {}),
+                };
                 failure ||= error;
                 uncertain ||= !!error.uncertain;
                 await this.update(job, "Tool needs attention · " + step.title);

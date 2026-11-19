@@ -1002,7 +1002,15 @@ function render() {
             JSON.stringify(
               state.inspectorTab === "input"
                 ? step.inputPreview || step.args || {}
-                : step.result || { status: "No output yet." },
+                : step.failure ||
+                    (["blocked", "uncertain"].includes(step.state)
+                      ? {
+                          status: step.state,
+                          message:
+                            selected.question ||
+                            "No confirmed output. See the assistant before continuing.",
+                        }
+                      : step.result || { status: "No output yet." }),
               null,
               2,
             ),

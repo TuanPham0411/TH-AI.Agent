@@ -475,8 +475,10 @@ export async function checkConnection(c, s, options = {}) {
   return {
     verified: true,
     note:
-      c.kind === "tiktok"
-        ? "Creator account read succeeded; publishing is not enabled."
-        : "Account / endpoint responded. This check does not send messages, publish or prove every permission.",
+      c.kind === "facebook"
+        ? "Page identity read succeeded. This does not verify pages_manage_posts, pages_read_engagement or the right to create posts. No post was sent."
+        : c.kind === "tiktok"
+          ? "Creator account read succeeded; publishing is not enabled."
+          : "Account / endpoint responded. This check does not send messages, publish or prove every permission.",
   };
 }

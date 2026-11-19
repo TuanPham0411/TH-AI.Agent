@@ -1,3 +1,4 @@
+import { facebookRejection } from "./facebook-diagnostics.js";
 import { clientOdbcQuery } from "./client-odbc.js";
 import { compare, validatePredicate } from "../site/company-flow.js";
 import { deviceInvoke } from "./personal-devices.js";
@@ -595,7 +596,7 @@ export function createCompanyTools({
       }
       let data;
       try {
-        data = await request(
+        const response = await request(
           "https://graph.facebook.com/v24.0/" +
             connection.accountId +
             "/" +
@@ -608,9 +609,17 @@ export function createCompanyTools({
             },
             body: payload.pipe ? payload : JSON.stringify(payload),
             signal,
+            acceptErrors: true,
+            includeHeaders: true,
           },
         );
+        const status =
+          typeof response?.status === "number" ? response.status : 200;
+        data = typeof response?.status === "number" ? response.data : response;
+        if (status >= 500) throw Error("Unconfirmed Facebook server response");
+        if (status >= 400 || data?.error) throw facebookRejection(data, status);
       } catch (e) {
+        if (e.facebookDiagnostic) throw e;
         if (/HTTP 4\d\d/.test(e.message))
           throw Error(
             "Facebook rejected this publication. Check Page access, granted permissions and media requirements; the draft is saved.",

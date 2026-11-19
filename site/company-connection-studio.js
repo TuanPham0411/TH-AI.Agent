@@ -74,7 +74,11 @@ export function createConnectionStudio({
             el("span", def.icon, "connector-icon"),
             el("h4", c.name),
             badge(
-              c.verifiedAt || c.check?.verified ? "Checked" : "Not checked",
+              c.verifiedAt || c.check?.verified
+                ? c.kind === "facebook"
+                  ? "Identity checked"
+                  : "Checked"
+                : "Not checked",
               c.verifiedAt || c.check?.verified ? "verified" : "",
             ),
           );
