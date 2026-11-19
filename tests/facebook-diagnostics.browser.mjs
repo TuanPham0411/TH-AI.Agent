@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict';import {randomUUID}from 'node:crypto';import{chromium}from 'playwright-core';import{companyFixture}from './company-v2-fixture.mjs';import{facebookRejection}from '../server/facebook-diagnostics.js';
+const f=await companyFixture(process.env.TEST_DATABASE_URL),b=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});try{
+ const id=randomUUID(),failure=facebookRejection({error:{code:200,error_subcode:42}},403);
+ await f.json('company/connections/page',{kind:'facebook',name:'My Page',accountId:'123456',secret:{key:'fixture-private-token'}},'PUT');
+ await f.pool.query("UPDATE company_connections SET value=jsonb_set(value,'{check}','{\"verified\":true}') WHERE id='page'");
+ await f.pool.query('INSERT INTO company_jobs(id,state,value) VALUES($1,$2,$3)',[id,'waiting_input',JSON.stringify({title:'Rejected publication',phase:'execute',question:failure.message,steps:[{id:'step-1',title:'Publish approved post',tool:'publish',skill:'publisher',connection:'page',args:{caption:'Approved caption'},state:'blocked',failure:{message:failure.message,diagnostic:failure.facebookDiagnostic}}]})]);
+ const p=await b.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(f.origin+'/#work/'+id);await p.locator('.flow-step').click();await p.getByRole('button',{name:'Output',exact:true}).click();await p.locator('.inspector-content').getByText(/pages_manage_posts/).waitFor();assert(!(await p.locator('.inspector-content').innerText()).includes('fixture-private-token'));
+ await p.getByRole('button',{name:'Connections',exact:true}).click();await p.getByText('Identity checked',{exact:true}).waitFor();assert.deepEqual(errors,[]);assert.equal(f.state.writes,0);console.log('PASS blocked Facebook output shows safe code/guidance instead of null fields; connection badge distinguishes identity from publish permission; no real publication.');
+}finally{await b.close();await f.close();}
