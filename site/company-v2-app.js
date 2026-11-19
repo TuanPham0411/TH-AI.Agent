@@ -38,6 +38,10 @@ const state = {
     selected: location.hash.startsWith("#work/")
       ? location.hash.slice(6)
       : null,
+    newWorkspace: location.hash === "#new",
+    chatScope: location.hash.startsWith("#work/")
+      ? location.hash.slice(6)
+      : null,
     requestId: null,
     draft: "",
     sending: false,
@@ -194,6 +198,7 @@ function jobLabel(job) {
       : jobStates[job?.state] || "Standing by";
 }
 function current() {
+  if (state.newWorkspace) return null;
   return (
     state.data?.jobs.find((j) => j.id === state.selected) ||
     state.data?.jobs[0] ||
@@ -287,19 +292,31 @@ function render() {
     "New request",
     () => {
       state.reply = false;
+      state.newWorkspace = true;
+      state.selected = null;
       state.example = null;
       state.requestRecipeId = null;
+      state.requestId = null;
+      state.draft = "";
+      state.chatScope = null;
+      state.selectedStep = null;
+      state.inspectorTab = null;
+      state.toolsOpen = false;
+      state.fit = true;
+      history.replaceState(null, "", "#new");
       render();
       document.querySelector("#assistant-input").focus();
     },
     "quiet-button compact",
   );
+  newRequest.disabled = state.sending;
   newRequest.prepend(workspaceIcon("plus"));
   ch.append(chatTitle);
   if (state.owner) ch.append(newRequest);
   conversation.append(ch);
   const log = el("div", "", "conversation-log");
   if (
+    !state.newWorkspace &&
     data?.recipes.some(
       (r) => r.source === "legacy-workflow" && r.legacyAutomationWasEnabled,
     )
@@ -316,7 +333,12 @@ function render() {
   log.setAttribute("aria-label", "Conversation with your assistant");
   log.setAttribute("role", "log");
   log.setAttribute("aria-live", "polite");
-  if (!data?.messages?.length) {
+  const visibleMessages = state.newWorkspace
+    ? []
+    : (data?.messages || []).filter(
+        (m) => !state.chatScope || m.job_id === state.chatScope,
+      );
+  if (!visibleMessages.length) {
     const empty = el("div", "", "conversation-empty");
     empty.append(
       workspaceIcon("input"),
@@ -337,7 +359,7 @@ function render() {
       );
     log.append(empty);
   }
-  for (const m of data?.messages || []) {
+  for (const m of visibleMessages) {
     const item = el(
       "article",
       "",
@@ -356,6 +378,8 @@ function render() {
           () => {
             state.example = null;
             state.requestRecipeId = null;
+            state.newWorkspace = false;
+            state.chatScope = null;
             state.selected = m.job_id;
             history.replaceState(null, "", "#work/" + m.job_id);
             state.reply = null;
@@ -634,6 +658,8 @@ function render() {
           reviewPlan: true,
           ...(state.requestRecipeId ? { recipeId: state.requestRecipeId } : {}),
         });
+        if (state.newWorkspace) state.chatScope = response.job.id;
+        state.newWorkspace = false;
         state.selected = response.job.id;
         state.selectedStep = null;
         state.inspectorTab = null;
@@ -714,6 +740,8 @@ function render() {
       () => {
         state.example = null;
         state.requestRecipeId = null;
+        state.newWorkspace = false;
+        state.chatScope = null;
         state.selected = job.id;
         history.replaceState(null, "", "#work/" + job.id);
         state.selectedStep = null;
@@ -727,7 +755,7 @@ function render() {
     b.append(el("span", jobLabel(job)));
     list.append(b);
   }
-  if (list.childNodes.length > 1) work.append(list);
+  if (!state.newWorkspace && list.childNodes.length > 1) work.append(list);
   const viewBar = el("div", "", "flow-toolbar");
   const counts = el("div", "", "flow-progress");
   counts.append(
@@ -1327,6 +1355,8 @@ function setup() {
 async function selectWork(id) {
   const job = (await api("company/jobs/" + id)).job;
   state.data.jobs = [job, ...state.data.jobs.filter((j) => j.id !== id)];
+  state.newWorkspace = false;
+  state.chatScope = null;
   state.selected = id;
   state.example = null;
   state.selectedStep = null;
@@ -1357,6 +1387,7 @@ const exampleStudio = createExampleStudio({
   refresh,
   getData: () => state.data,
   onPreview: (example) => {
+    state.newWorkspace = false;
     state.example = example;
     state.selectedStep = null;
     state.inspectorTab = null;
@@ -1516,9 +1547,21 @@ async function start() {
   });
 }
 window.addEventListener("hashchange", () => {
+  if (location.hash === "#new") {
+    state.newWorkspace = true;
+    state.selected = null;
+    state.example = null;
+    state.selectedStep = null;
+    state.inspectorTab = null;
+    state.reply = false;
+    render();
+    return;
+  }
   if (location.hash.startsWith("#work/")) {
     state.example = null;
     state.requestRecipeId = null;
+    state.newWorkspace = false;
+    state.chatScope = null;
     state.selected = location.hash.slice(6);
     state.reply = null;
     render();

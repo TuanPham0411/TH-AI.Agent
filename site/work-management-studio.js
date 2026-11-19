@@ -74,7 +74,9 @@ export function createWorkManagement({
             "Open a task to read its conversation. Clearing chat does not stop work.",
           ),
         );
-        host.append(
+        const actions = el("div", "", "history-actions");
+        host.append(actions);
+        actions.append(
           button(
             "Clear all chat history",
             () => confirmClear(null, () => open("chat")),
@@ -94,10 +96,20 @@ export function createWorkManagement({
               ]),
           ).values(),
         ];
-        for (const j of jobs)
-          host.append(button(j.title, () => chat(j), "manager-row-link"));
+        const list = el("div", "", "history-thread-list");
+        host.append(list);
+        for (const j of jobs) {
+          const row = el("article", "", "history-thread");
+          row.append(
+            button(j.title, () => chat(j), "manager-row-link"),
+            button("Open chat", () => chat(j), "quiet-button"),
+          );
+          list.append(row);
+        }
         if (!jobs.length) host.append(el("p", "No chat messages."));
-        host.append(
+        const footer = el("div", "", "history-actions");
+        host.append(footer);
+        footer.append(
           button("Browse all tasks", () => open("work"), "quiet-button"),
         );
         return;
