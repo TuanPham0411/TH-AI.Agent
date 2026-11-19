@@ -1,3 +1,4 @@
+import { createWorkManagement } from "./work-management-studio.js";
 import {
   workspaceIcon,
   attachSplitter,
@@ -180,6 +181,8 @@ function navButton(label, icon, action) {
   return b;
 }
 function jobLabel(job) {
+  if (job?.paused) return "Paused";
+  if (job?.controlRequest) return "Pausing / stopping after current call";
   return job?.steps?.some((step) => step.state === "waiting_external")
     ? "Visual generation in progress"
     : job?.state === "example"
@@ -232,9 +235,10 @@ function render() {
         }
       : current(),
     replying =
-      state.reply === true ||
-      (state.reply === null &&
-        ["waiting_input", "waiting_approval"].includes(selected?.state)),
+      !selected?.paused &&
+      (state.reply === true ||
+        (state.reply === null &&
+          ["waiting_input", "waiting_approval"].includes(selected?.state))),
     data = state.data,
     previous = document.querySelector(".conversation-log"),
     bottom =
@@ -261,6 +265,7 @@ function render() {
   const nav = el("nav");
   if (state.owner)
     nav.append(
+      navButton("Work manager", "activity", () => workManager.open()),
       navButton("Connections", "plug", () => connectionList()),
       navButton("Workflows", "workflow", () => exampleStudio.library()),
       navButton("Settings", "settings", () => setup()),
@@ -424,6 +429,7 @@ function render() {
   }
   if (
     selected &&
+    !selected.paused &&
     ["waiting_input", "waiting_approval", "uncertain"].includes(selected.state)
   ) {
     const card = el("article", "", "action-card");
@@ -625,6 +631,7 @@ function render() {
         const response = await sendJSON("company/messages", {
           text: state.draft,
           requestId: state.requestId,
+          reviewPlan: true,
           ...(state.requestRecipeId ? { recipeId: state.requestRecipeId } : {}),
         });
         state.selected = response.job.id;
@@ -663,6 +670,33 @@ function render() {
         "quiet-button",
       ),
     );
+  if (selected?.id && !["completed", "cancelled"].includes(selected.state)) {
+    operations.append(
+      button(
+        selected.paused ? "Resume" : "Pause",
+        () =>
+          workManager.control(selected, selected.paused ? "resume" : "pause"),
+        "quiet-button",
+      ),
+      button(
+        "Stop",
+        () => workManager.control(selected, "stop"),
+        "quiet-button",
+      ),
+    );
+    if (
+      selected.phase === "execute" &&
+      !selected.automation &&
+      selected.steps.length
+    )
+      operations.append(
+        button(
+          selected.paused ? "Edit workflow" : "Pause to edit",
+          () => workManager.editPlan(selected),
+          "quiet-button",
+        ),
+      );
+  }
   if (selected?.id) {
     const tab = el("a", "Open work tab →", "quiet-button");
     tab.href = "/#work/" + selected.id;
@@ -716,6 +750,15 @@ function render() {
     ["live", "Live signal"],
   ])
     legend.append(el("span", label, cls));
+  if (selected?.steps.length && !state.example) {
+    const progress = el("progress", "", "workflow-progress");
+    progress.max = selected.steps.length;
+    progress.value = selected.steps.filter((s) =>
+      ["completed", "skipped"].includes(s.state),
+    ).length;
+    progress.setAttribute("aria-label", "Workflow progress");
+    counts.append(progress);
+  }
   viewBar.append(
     counts,
     legend,
@@ -1273,6 +1316,29 @@ function setup() {
   });
   document.querySelector("#modal").classList.add("model-settings-dialog");
 }
+async function selectWork(id) {
+  const job = (await api("company/jobs/" + id)).job;
+  state.data.jobs = [job, ...state.data.jobs.filter((j) => j.id !== id)];
+  state.selected = id;
+  state.example = null;
+  state.selectedStep = null;
+  state.inspectorTab = null;
+  state.reply = null;
+  history.replaceState(null, "", "#work/" + id);
+  render();
+}
+const workManager = createWorkManagement({
+  api,
+  sendJSON,
+  modal,
+  el,
+  button,
+  field,
+  refresh,
+  getData: () => state.data,
+  onSelect: selectWork,
+  onAutomation: automation,
+});
 const exampleStudio = createExampleStudio({
   api,
   sendJSON,

@@ -115,6 +115,39 @@ export function createConnectionStudio({
               "quiet-button",
             ),
           );
+          controls.append(
+            button(
+              "Delete",
+              () => {
+                open("Delete connection", (host) => {
+                  note(
+                    host,
+                    "Delete " +
+                      c.name +
+                      " and its saved credentials? Active work and enabled schedules that use it must be stopped first.",
+                  );
+                  host.append(
+                    button(
+                      "Delete connection",
+                      async () => {
+                        await api(
+                          "company/connections/" + encodeURIComponent(c.id),
+                          {
+                            method: "DELETE",
+                            body: JSON.stringify({ revision: c.revision }),
+                          },
+                        );
+                        await refresh();
+                        await list();
+                      },
+                      "danger-button dialog-save",
+                    ),
+                  );
+                });
+              },
+              "danger-button",
+            ),
+          );
           card.append(controls);
           grid.append(card);
         }

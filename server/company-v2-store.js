@@ -64,7 +64,7 @@ export class CompanyStore {
   async messages() {
     return (
       await this.pool.query(
-        "SELECT id,job_id,role,content,created_at FROM company_messages ORDER BY created_at DESC,id DESC LIMIT 100",
+        "SELECT id,job_id,role,content,created_at FROM company_messages WHERE content<>'' ORDER BY created_at DESC,id DESC LIMIT 100",
       )
     ).rows.reverse();
   }
@@ -96,7 +96,7 @@ export class CompanyStore {
   async save(job, db = this.pool) {
     const { id, revision, state, ...value } = job;
     const r = await db.query(
-      "UPDATE company_jobs SET state=$2,value=$3,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$4 RETURNING revision",
+      "UPDATE company_jobs SET state=$2,value=$3::jsonb || CASE WHEN value ? 'controlRequest' THEN jsonb_build_object('controlRequest',value->'controlRequest') ELSE '{}'::jsonb END,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$4 RETURNING revision",
       [id, state, JSON.stringify(value), revision],
     );
     if (!r.rowCount)
@@ -107,13 +107,27 @@ export class CompanyStore {
     job.revision = r.rows[0].revision;
     return job;
   }
+  async takeControl(id) {
+    return (
+      await this.pool.query(
+        "WITH old AS (SELECT id,value->>'controlRequest' action FROM company_jobs WHERE id=$1 AND value ? 'controlRequest' FOR UPDATE) UPDATE company_jobs j SET value=j.value-'controlRequest' FROM old WHERE j.id=old.id RETURNING old.action",
+        [id],
+      )
+    ).rows[0]?.action;
+  }
+  async clearControl(id) {
+    await this.pool.query(
+      "UPDATE company_jobs SET value=value-'controlRequest' WHERE id=$1 AND value ? 'controlRequest'",
+      [id],
+    );
+  }
   async say(job, text, db = this.pool) {
     await db.query(
       "INSERT INTO company_messages(id,job_id,role,content) VALUES($1,$2,$3,$4)",
       [randomUUID(), job.id, "assistant", text],
     );
   }
-  async enqueue({ requestId, text, recipeId = null }) {
+  async enqueue({ requestId, text, recipeId = null, reviewPlan = false }) {
     try {
       return await this.tx(async (db) => {
         const old = (
@@ -129,6 +143,7 @@ export class CompanyStore {
           state: "queued",
           phase: "assistant",
           request: text,
+          reviewPlan,
           ...(recipeId ? { recipeId } : {}),
           language: /[àáạảãăâđêôơư]/i.test(text) ? "vi" : "en",
           title: text.slice(0, 90),
