@@ -329,6 +329,7 @@ export class CompanyRunner {
                   requestPath,
                   transport,
                   accountId,
+                  pageUrl,
                   action,
                   description,
                   effect,
@@ -346,6 +347,7 @@ export class CompanyRunner {
                   requestPath,
                   transport,
                   accountId,
+                  pageUrl,
                   action,
                   description,
                   effect,
@@ -597,8 +599,7 @@ export class CompanyRunner {
               if (
                 job.automation &&
                 (connection?.kind === "bridge" ||
-                  (connection?.kind === "odbc" &&
-                    connection.transport === "device")) &&
+                  connection?.transport === "device") &&
                 (connection.execution !== "server" ||
                   !connection.unattended ||
                   !connection.verifiedAt ||

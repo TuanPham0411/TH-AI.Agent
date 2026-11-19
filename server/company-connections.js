@@ -1,3 +1,4 @@
+import { deviceInvoke } from "./personal-devices.js";
 import { clientOdbcQuery } from "./client-odbc.js";
 import {
   connectionDefinition,
@@ -78,6 +79,49 @@ export function normalizeConnection(kind, body, previous = {}) {
     if (f.options && !f.options.some(([key]) => key === v))
       throw Error("Choose a supported " + f.label + ".");
     value[f.key] = v;
+  }
+  if (kind === "facebook_browser") {
+    if (
+      typeof value.expectedName !== "string" ||
+      !value.expectedName.trim() ||
+      value.expectedName.length > 100
+    )
+      throw Error(
+        "Enter the exact Facebook identity name shown in the composer.",
+      );
+    if (!/^[a-f0-9-]{36}$/i.test(value.deviceId || ""))
+      throw Error("Choose a paired computer.");
+    let u;
+    try {
+      u = new URL(value.pageUrl);
+    } catch {}
+    if (
+      !u ||
+      u.origin !== "https://www.facebook.com" ||
+      u.username ||
+      u.password ||
+      u.search ||
+      u.hash ||
+      !/^\/[A-Za-z0-9.]{3,100}\/?$/.test(u.pathname) ||
+      ["login", "logout", "checkpoint", "settings", "help", "recover"].includes(
+        u.pathname.replaceAll("/", "").toLowerCase(),
+      )
+    )
+      throw Error(
+        "Use a fixed https://www.facebook.com/PageName or numeric Page URL.",
+      );
+    return {
+      value: {
+        ...value,
+        pageUrl: u.href,
+        transport: "device",
+        action: "facebook_publish",
+        effect: "write",
+        execution: "desktop",
+        unattended: false,
+      },
+      secret: {},
+    };
   }
   if (definition.scheme) {
     // Older URI-only connections remain editable without returning private strings.
@@ -414,6 +458,26 @@ export async function serviceOperation(
   return { data: result, readOnly: true };
 }
 export async function checkConnection(c, s, options = {}) {
+  if (c.kind === "facebook_browser") {
+    const reply = await deviceInvoke(
+      options.pool,
+      c.deviceId,
+      "facebook_check",
+      { connectionId: c.id, connectionRevision: c.revision },
+      { signal: options.signal, expectedEffect: "read" },
+    );
+    if (reply?.output?.status !== "ready")
+      throw Error(
+        reply?.output?.message ||
+          "The browser did not confirm the Facebook composer.",
+      );
+    return {
+      verified: true,
+      execution: "desktop",
+      unattended: false,
+      note: "Local browser session and Create post control checked. No post sent. Facebook UI may still require input at publication time.",
+    };
+  }
   if (c.kind === "odbc" && c.transport === "device") {
     const query =
       c.dialect === "oracle" ? "SELECT 1 AS OK FROM dual" : "SELECT 1 AS ok";

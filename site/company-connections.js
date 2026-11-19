@@ -127,6 +127,23 @@ export const connectionTypes = {
       ),
     ],
   },
+  facebook_browser: {
+    title: "Facebook · Browser on your computer",
+    group: "Social & messaging",
+    icon: "FB",
+    summary:
+      "Publish in a visible Chrome/Edge window using your local Facebook session.",
+    auth: "Pair a computer and update its agent with -EnableFacebookBrowser. Sign in interactively in a dedicated local browser profile; passwords/cookies never enter the server or chat. The computer must stay awake. Login/OTP/CAPTCHA require your participation.",
+    docs: "/facebook-browser-setup.html",
+    fields: [
+      f("deviceId", "Paired computer", { required: true }),
+      f("pageUrl", "Facebook destination URL", { required: true }),
+      f("expectedName", "Facebook posting identity name", { required: true }),
+      f("allowPublish", "Allow publication without asking each time", {
+        type: "checkbox",
+      }),
+    ],
+  },
   messenger: {
     title: "Messenger",
     group: "Social & messaging",

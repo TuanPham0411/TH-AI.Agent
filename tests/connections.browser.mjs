@@ -19,7 +19,7 @@ try {
   await page
     .getByRole("heading", { name: "Connections", exact: true })
     .waitFor();
-  assert.equal(await page.locator(".connector-choice").count(), 15);
+  assert.equal(await page.locator(".connector-choice").count(), 16);
   await page
     .getByRole("button", { name: /NET Network \/ internal API/ })
     .click();

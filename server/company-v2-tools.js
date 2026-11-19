@@ -1,3 +1,5 @@
+import { archiveMedia } from "./media-archive.js";
+import { publishInBrowser } from "./facebook-browser.js";
 import { facebookRejection } from "./facebook-diagnostics.js";
 import { clientOdbcQuery } from "./client-odbc.js";
 import { compare, validatePredicate } from "../site/company-flow.js";
@@ -92,6 +94,11 @@ export function resolveToolStep(step, steps) {
       (s) => s.id === step.args.mediaFrom && s.state === "completed",
     ),
     url = source?.result?.mediaUrls?.[0];
+  if (source?.result?.files?.[0]?.id)
+    return {
+      ...step,
+      args: { ...step.args, assetId: source.result.files[0].id },
+    };
   if (!url)
     throw Error("The visual media is not ready. No publication was sent.");
   return {
@@ -445,7 +452,30 @@ export function createCompanyTools({
         throw Error(
           "The completed generation has no usable HTTPS media output.",
         );
+      const browserTarget = steps?.some(
+        (s) =>
+          s.tool === "publish" &&
+          s.args?.mediaFrom === step.id &&
+          connections.some(
+            (c) => c.id === s.connection && c.kind === "facebook_browser",
+          ),
+      );
+      if (browserTarget && !step.result?.jobId)
+        return { pending: true, jobId: state.id };
+      if (browserTarget)
+        state = await archiveMedia(state, { pool, root: root || fileRoot() });
       return {
+        ...(browserTarget
+          ? {
+              files: state.files.map(({ id, name, type, size }) => ({
+                url: "/api/studio/files/" + id,
+                id,
+                name,
+                type,
+                size,
+              })),
+            }
+          : {}),
         jobId: state.id,
         mediaUrls: urls,
         mediaType: connection.mediaType,
@@ -505,6 +535,8 @@ export function createCompanyTools({
         { root },
       );
     if (step.tool === "publish") {
+      if (connection?.kind === "facebook_browser")
+        return publishInBrowser(pool, connection, args, { signal });
       if (
         connection?.kind !== "facebook" ||
         !secret?.key ||

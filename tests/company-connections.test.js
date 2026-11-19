@@ -180,12 +180,12 @@ test("workflow mapped-data rails reflect real explicit dependencies, not invente
   );
 });
 
-test("all 37 workflow examples are inactive, topologically valid and cover every actual tool type", async () => {
+test("all 39 workflow examples are inactive, topologically valid and cover every actual tool type", async () => {
   const { workflowExamples } = await import("../site/workflow-examples.js");
   const { toolCatalog, validatePlan, defaultCompanySettings } = await import(
     "../site/company-v2-model.js"
   );
-  assert.equal(workflowExamples.length, 37);
+  assert.equal(workflowExamples.length, 39);
   const covered = new Set();
   for (const example of workflowExamples) {
     assert.equal(example.draft, true);

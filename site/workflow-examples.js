@@ -547,4 +547,46 @@ add(
     "Eligible WhatsApp recipient/message",
   ],
 );
+add(
+  "facebook-browser",
+  "Publish through your local Facebook browser",
+  "Content & social",
+  "Use the paired browser session, review the caption and upload a local image. Sign in on the device first.",
+  [slot("browser", "facebook_browser", "Facebook browser session")],
+  [
+    step("publish", "Publish approved browser post", "browser", {
+      caption: "YOUR_FINISHED_CAPTION",
+      localPaths: ["YOUR_LOCAL_IMAGE_PATH"],
+    }),
+  ],
+  [
+    "Paired interactive computer",
+    "Facebook session and destination identity",
+    "Approved local image path",
+  ],
+);
+add(
+  "media-facebook-browser",
+  "Create image → publish in Facebook browser",
+  "Content & social",
+  "Generate real media, archive it and upload through the paired browser after approval.",
+  [
+    slot("visuals", "media", "Visual model"),
+    slot("browser", "facebook_browser", "Facebook browser session"),
+  ],
+  [
+    step("media", "Create original visual", "visuals", {
+      prompt: "YOUR_FINISHED_VISUAL_PROMPT",
+    }),
+    step("publish", "Publish generated visual in browser", "browser", {
+      caption: "YOUR_FINISHED_CAPTION",
+      mediaFrom: "step-1",
+    }),
+  ],
+  [
+    "Media provider and billing",
+    "Paired browser session",
+    "Caption and visual prompt",
+  ],
+);
 export const workflowExamples = examples;

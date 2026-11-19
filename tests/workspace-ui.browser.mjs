@@ -224,7 +224,7 @@ try {
     )
     .waitFor();
   await page.getByRole("tab", { name: "Examples", exact: true }).click();
-  assert.equal(await page.locator(".example-card").count(), 37);
+  assert.equal(await page.locator(".example-card").count(), 39);
   await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.waitForTimeout(200);
