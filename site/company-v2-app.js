@@ -476,6 +476,13 @@ function render() {
         image.referrerPolicy = "no-referrer";
         preview.append(image);
       }
+      if (/^[a-f0-9-]{36}$/i.test(payload.assetId || "")) {
+        const asset = el("a", "Review prepared image/video →");
+        asset.href = "/api/studio/files/" + payload.assetId;
+        asset.target = "_blank";
+        asset.rel = "noopener noreferrer";
+        preview.append(asset);
+      }
       if (payload.videoUrl) {
         const link = el("a", "Review prepared video →");
         link.href = safeWorkLink(payload.videoUrl, location.origin) || "#";

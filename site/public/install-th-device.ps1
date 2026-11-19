@@ -1,4 +1,4 @@
-param([string]$Server='https://thienha.io.vn',[switch]$FullControl,[switch]$EnableOdbc,[switch]$NoStartup,[string]$PythonPath='',[switch]$RePair)
+param([string]$Server='https://thienha.io.vn',[switch]$FullControl,[switch]$EnableOdbc,[switch]$EnableFacebookBrowser,[ValidateSet('chrome','msedge','chromium')][string]$BrowserChannel='chrome',[switch]$NoStartup,[string]$PythonPath='',[switch]$RePair)
 $ErrorActionPreference='Stop'
 $uri=[Uri]$Server
 if($uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.AbsolutePath -ne '/'){throw 'Use a trusted HTTPS server origin.'}
@@ -11,12 +11,17 @@ if($EnableOdbc){
  & $pythonExe -m pip install --user pyodbc
  if($LASTEXITCODE -ne 0){throw 'Unable to install pyodbc in this Python. Check pip/network or use the matching Python architecture.'}
 }
+if($EnableFacebookBrowser){
+ & $pythonExe -m pip install --user playwright
+ if($LASTEXITCODE -ne 0){throw 'Unable to install Playwright in the selected Python.'}
+ if($BrowserChannel -eq 'chromium'){& $pythonExe -m playwright install chromium;if($LASTEXITCODE -ne 0){throw 'Unable to install Chromium.'}}
+}
 $folder=Join-Path $env:LOCALAPPDATA 'ThienHa\DeviceLink'
 New-Item -ItemType Directory -Force -Path $folder | Out-Null
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls.exe $folder /inheritance:r /grant:r "${identity}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' | Out-Null
 if($LASTEXITCODE -ne 0){throw 'Unable to restrict device credential folder permissions.'}
-foreach($file in @('personal-device.py','personal-bridge.py','personal-odbc.py','office-tool.ps1')){Invoke-WebRequest -UseBasicParsing -Uri "$($Server.TrimEnd('/'))/$file" -OutFile (Join-Path $folder $file)}
+foreach($file in @('personal-device.py','personal-bridge.py','personal-odbc.py','facebook-browser.py','office-tool.ps1')){Invoke-WebRequest -UseBasicParsing -Uri "$($Server.TrimEnd('/'))/$file" -OutFile (Join-Path $folder $file)}
 Write-Host "Server: $Server"
 Write-Host "Full computer control: $($FullControl.IsPresent). Runs as $identity; it does not elevate Windows privileges."
 $previousPath=Join-Path $folder 'device.json'
@@ -36,6 +41,8 @@ if($previous){foreach($property in $previous.PSObject.Properties){$config[$prope
 $config.server=$Server.TrimEnd('/');$config.token=$token;$config.execution='desktop';$config.unattended=$false
 if(-not $previous -or $PSBoundParameters.ContainsKey('FullControl')){$config.fullControl=$FullControl.IsPresent}
 if(-not $previous -or $PSBoundParameters.ContainsKey('EnableOdbc')){$config.enableOdbc=$EnableOdbc.IsPresent}
+if(-not $previous -or $PSBoundParameters.ContainsKey('EnableFacebookBrowser')){$config.enableFacebookBrowser=$EnableFacebookBrowser.IsPresent}
+if(-not $previous -or $PSBoundParameters.ContainsKey('BrowserChannel')){$config.browserChannel=$BrowserChannel}
 if(-not $config.roots){$config.roots=@{home=$env:USERPROFILE}}
 if(-not $config.actions){$config.actions=@{}}
 $configPath=Join-Path $folder 'device.json'

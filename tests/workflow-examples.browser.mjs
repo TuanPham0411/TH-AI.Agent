@@ -14,7 +14,7 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(f.origin);
   await page.getByRole("button", { name: "Workflows", exact: true }).click();
-  assert.equal(await page.locator(".example-card").count(), 37);
+  assert.equal(await page.locator(".example-card").count(), 39);
   await page.screenshot({
     path: "artifacts/workflow-example-library.jpg",
     type: "jpeg",
@@ -100,7 +100,7 @@ try {
   assert.equal((await f.json("company/workspace")).value.jobs.length, 0);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS 37 inactive examples, parallel/conditional graph previews, editable draft persistence, no execution/model calls during preview/setup, and automation refusal until a verified run.",
+    "PASS 39 inactive examples, parallel/conditional graph previews, editable draft persistence, no execution/model calls during preview/setup, and automation refusal until a verified run.",
   );
 } finally {
   await browser.close();

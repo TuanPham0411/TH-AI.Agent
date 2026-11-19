@@ -5,4 +5,4 @@ await cp('server/th-storage/capture.sql','dist/server/storage-capture.sql');
 
 await cp('tools/personal-bridge.py','dist/web/personal-bridge.py');
 
-for(const name of ['personal-device.py','personal-odbc.py','office-tool.ps1'])await cp('tools/'+name,'dist/web/'+name);
+for(const name of ['personal-device.py','personal-odbc.py','facebook-browser.py','office-tool.ps1'])await cp('tools/'+name,'dist/web/'+name);

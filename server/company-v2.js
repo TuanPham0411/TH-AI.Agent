@@ -443,6 +443,27 @@ export function mountCompanyV2(
     }),
   );
   router.post(
+    "/company/connections/:id/browser-login",
+    route(async (req, res) => {
+      const c = (await store.connections()).find(
+        (c) => c.id === req.params.id && c.kind === "facebook_browser",
+      );
+      if (!c) fail("Save a Facebook browser connection first.");
+      const reply = await deviceInvoke(
+        pool,
+        c.deviceId,
+        "facebook_login",
+        { connectionId: c.id, connectionRevision: c.revision },
+        { signal: AbortSignal.timeout(15000), expectedEffect: "write" },
+      );
+      res.json({
+        message:
+          reply?.output?.message ||
+          "Sign-in requested on your paired computer. Complete login there, close that window, then test this connection.",
+      });
+    }),
+  );
+  router.post(
     "/company/connections/:id/check",
     route(async (req, res) => {
       const connection = (await store.connections()).find(
@@ -611,8 +632,7 @@ export function mountCompanyV2(
           scope.some((s) => {
             const c = connections.find((c) => c.id === s.connection);
             return (
-              (c?.kind === "bridge" ||
-                (c?.kind === "odbc" && c.transport === "device")) &&
+              (c?.kind === "bridge" || c?.transport === "device") &&
               (c.execution !== "server" ||
                 !c.unattended ||
                 !c.verifiedAt ||

@@ -26,6 +26,13 @@ _odbc_spec.loader.exec_module(odbc)
 _inventory = {'at': 0, 'value': None}
 
 
+def facebook_module():
+    spec = importlib.util.spec_from_file_location('th_facebook', pathlib.Path(__file__).with_name('facebook-browser.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def capabilities(config):
     actions = [
         {'id': 'list_folder', 'effect': 'read', 'description': 'List a folder without executing code. Input {root:"home",folder:"relative path"}.'},
@@ -34,6 +41,16 @@ def capabilities(config):
     ]
     for name, definition in config.get('actions', {}).items():
         actions.append({'id': name, 'effect': definition.get('effect', 'write'), 'description': definition.get('description', 'Owner-configured action.'), 'unattended': bool(definition.get('unattended'))})
+    if config.get('enableFacebookBrowser') is True:
+        try:
+            if facebook_module().available(config):
+                actions.extend([
+                    {'id': 'facebook_check', 'effect': 'read', 'description': 'Check Facebook login and composer in the visible dedicated local browser. No post sent.'},
+                    {'id': 'facebook_login', 'effect': 'write', 'description': 'Open the dedicated local browser for interactive Facebook login/OTP. No password in task input.'},
+                    {'id': 'facebook_publish', 'effect': 'write', 'description': 'Publish an approved Facebook caption and local/server media using the local session. Requires actual permalink to confirm; desktop-only.'},
+                ])
+        except (ImportError, OSError):
+            pass
     odbc_info = None
     if config.get('enableOdbc') is True:
         if time.monotonic() - _inventory['at'] > 15 or _inventory['value'] is None:
@@ -61,6 +78,8 @@ def local_path(value):
 
 
 def invoke(config, action, value):
+    if action in {'facebook_check','facebook_login','facebook_publish'}:
+        return facebook_module().operate(config, pathlib.Path(config['_directory']), action, value)
     if action in {'odbc_inventory', 'odbc_query'}:
         if config.get('enableOdbc') is not True:
             raise ValueError('ODBC access was not enabled locally. Re-run the installer with -EnableOdbc.')
@@ -129,7 +148,28 @@ def post(config, path, body):
         return json.load(response)
 
 
+def download_facebook_media(config, task_id, folder):
+    if not __import__('re').fullmatch(r'[a-f0-9-]{36}', task_id):
+        raise ValueError('Invalid media task.')
+    req = urllib.request.Request(config['server'].rstrip('/') + '/api/device-link/tasks/' + task_id + '/media', headers={'Authorization': 'Bearer ' + config['token']})
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_args):
+            raise ValueError('Unexpected media redirect.')
+    with urllib.request.build_opener(NoRedirect).open(req, timeout=8) as response:
+        types = {'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','video/mp4':'.mp4','video/quicktime':'.mov'}
+        suffix = types.get(response.headers.get_content_type())
+        if not suffix:
+            raise ValueError('Unsupported media response.')
+        target = pathlib.Path(folder) / ('upload' + suffix)
+        data = response.read(20 * 1024 * 1024 + 1)
+        if len(data) > 20 * 1024 * 1024:
+            raise ValueError('Media exceeds 20 MB.')
+        target.write_bytes(data)
+        return str(target)
+
+
 def run(config, directory):
+    config['_directory'] = str(directory)
     pending = directory / 'pending-result.json'
     seen = directory / 'claimed-tasks.txt'
     print('TH device link active. Close this window or stop its startup task to disconnect.', flush=True)
@@ -161,7 +201,17 @@ def run(config, directory):
                     journal.flush()
                     os.fsync(journal.fileno())
                 try:
-                    body = {'ok': True, 'output': invoke(config, task['action'], task.get('input', {}))}
+                    value = task.get('input', {})
+                    if task['action'] == 'facebook_publish':
+                        value.pop('_downloadedMedia', None)
+                        with tempfile.TemporaryDirectory(prefix='th-facebook-media-') as media_dir:
+                            if value.get('assetId'):
+                                value['_downloadedMedia'] = [download_facebook_media(config, task['id'], media_dir)]
+                            value['_deadline'] = task['deadline']
+                            output = invoke(config, task['action'], value)
+                    else:
+                        output = invoke(config, task['action'], value)
+                    body = {'ok': True, 'output': output}
                 except Exception as error:
                     body = {'ok': False, 'error': str(error)[:500]}
             body['claim'] = task['claim']

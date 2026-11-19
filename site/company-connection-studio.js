@@ -152,6 +152,22 @@ export function createConnectionStudio({
               "danger-button",
             ),
           );
+          if (c.kind === "facebook_browser")
+            controls.append(
+              button(
+                "Open Facebook sign-in",
+                async () => {
+                  const r = await sendJSON(
+                    "company/connections/" +
+                      encodeURIComponent(c.id) +
+                      "/browser-login",
+                    {},
+                  );
+                  notice(r.message);
+                },
+                "quiet-button",
+              ),
+            );
           card.append(controls);
           grid.append(card);
         }
@@ -191,7 +207,11 @@ export function createConnectionStudio({
     });
   }
   async function form(existing = null, need = {}) {
-    if (["bridge", "odbc"].includes(existing?.kind || need.kind))
+    if (
+      ["bridge", "odbc", "facebook_browser"].includes(
+        existing?.kind || need.kind,
+      )
+    )
       await loadDevices();
     open(existing ? "Configure " + existing.name : "Connect a tool", (host) => {
       const options = Object.entries(connectionTypes).map(([k, d]) => [
@@ -246,14 +266,16 @@ export function createConnectionStudio({
           aside,
           kind.value === "odbc"
             ? "Paired-computer mode uses the Windows driver/DSN on that computer, which must stay online. HTTPS mode uses your separately installed gateway. The Pi does not directly read a Windows DSN."
-            : kind.value === "bridge"
+            : ["bridge", "facebook_browser"].includes(kind.value)
               ? "On your paired computer. It must be online and awake. Portability assessment can move suitable Python tools to a verified server."
               : "On the server, using the saved account and network route. Your browser tab is not the worker.",
         );
         aside.append(el("h4", "Private credentials"));
         note(
           aside,
-          "Saved in the server vault. Existing passwords/tokens are never sent back to this form or included in model context. Blank private fields preserve saved values.",
+          kind.value === "facebook_browser"
+            ? "Facebook session data stays in a dedicated profile on your computer. No Facebook password, cookie or access token is saved in this form."
+            : "Saved in the server vault. Existing passwords/tokens are never sent back to this form or included in model context. Blank private fields preserve saved values.",
         );
         if (def.docs) {
           const a = el("a", "Official setup / permissions →");
@@ -284,7 +306,28 @@ export function createConnectionStudio({
                   ""),
             {
               secret: spec.secret,
-              options: spec.options,
+              options:
+                kind.value === "facebook_browser" && spec.key === "deviceId"
+                  ? devices
+                      .filter(
+                        (d) =>
+                          !d.revoked &&
+                          d.capabilities?.actions?.some(
+                            (a) => a.id === "facebook_publish",
+                          ),
+                      )
+                      .map((d) => [d.id, d.name]).length
+                    ? devices
+                        .filter(
+                          (d) =>
+                            !d.revoked &&
+                            d.capabilities?.actions?.some(
+                              (a) => a.id === "facebook_publish",
+                            ),
+                        )
+                        .map((d) => [d.id, d.name])
+                    : [["", "Update/pair an agent with -EnableFacebookBrowser"]]
+                  : spec.options,
               type: spec.type || "text",
               rows: spec.rows,
             },
@@ -653,14 +696,35 @@ export function createConnectionStudio({
         transport.onchange = draw;
         draw();
       }
+      let browserLoginAction;
       kind.onchange = async () => {
-        if (["bridge", "odbc"].includes(kind.value)) await loadDevices();
+        if (["bridge", "odbc", "facebook_browser"].includes(kind.value))
+          await loadDevices();
         details();
+        if (browserLoginAction)
+          browserLoginAction.style.display =
+            kind.value === "facebook_browser" ? "" : "none";
       };
       details();
       const status = el("p", "", "setup-status"),
         controls = el("div", "", "connection-toolbar dialog-actions");
       main.append(status, controls);
+      browserLoginAction = button(
+        "Open Facebook sign-in",
+        async () => {
+          const result = await sendJSON(
+            "company/connections/" +
+              encodeURIComponent(id.value) +
+              "/browser-login",
+            {},
+          );
+          status.textContent = result.message;
+        },
+        "quiet-button",
+      );
+      browserLoginAction.style.display =
+        kind.value === "facebook_browser" ? "" : "none";
+      controls.append(browserLoginAction);
       controls.append(
         button(
           "Save secure connection",
@@ -791,7 +855,7 @@ export function createConnectionStudio({
                 location.origin +
                 '/install-th-device.ps1" -OutFile "$env:TEMP\\install-th-device.ps1"\n& "$env:TEMP\\install-th-device.ps1" -Server "' +
                 location.origin +
-                '" -FullControl -EnableOdbc -RePair',
+                '" -FullControl -EnableOdbc -EnableFacebookBrowser -RePair',
             );
             result.append(
               el("h4", "Run in PowerShell on your laptop"),

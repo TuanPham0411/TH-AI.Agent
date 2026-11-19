@@ -1,3 +1,5 @@
+import { fileRoot } from "./studio-files.js";
+import { confinedFile } from "./th-storage/attachments.mjs";
 import { isDeepStrictEqual } from "node:util";
 import express from "express";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
@@ -228,10 +230,82 @@ export function deviceAgentRouter(pool) {
               : {},
         };
       }
+      if (
+        task &&
+        ["facebook_check", "facebook_login", "facebook_publish"].includes(
+          task.action,
+        )
+      ) {
+        const c = (
+          await pool.query(
+            "SELECT id,revision,value FROM company_connections WHERE id=$1",
+            [task.input.connectionId],
+          )
+        ).rows[0];
+        if (
+          !c ||
+          c.value.kind !== "facebook_browser" ||
+          c.value.deviceId !== req.device.id ||
+          c.revision !== task.input.connectionRevision
+        ) {
+          await pool.query(
+            "UPDATE company_device_tasks SET state='failed',output=$2 WHERE id=$1",
+            [
+              task.id,
+              JSON.stringify({
+                ok: false,
+                error:
+                  "Facebook browser connection changed. Reconfigure before using it.",
+              }),
+            ],
+          );
+          return res.json({ task: null, pollAfterSeconds: 3 });
+        }
+        task.input = {
+          ...task.input,
+          profileId: c.id,
+          pageUrl: c.value.pageUrl,
+          expectedName: c.value.expectedName,
+        };
+      }
       res.json({
         task: task ? { ...task, claim } : null,
         pollAfterSeconds: 3,
       });
+    }),
+  );
+  router.get(
+    "/api/device-link/tasks/:id/media",
+    run(async (req, res) => {
+      if (!uuid(req.params.id)) fail("Invalid task.");
+      const task = (
+        await pool.query(
+          "SELECT input FROM company_device_tasks WHERE id=$1 AND device_id=$2 AND generation=$3 AND action='facebook_publish' AND state='claimed' AND deadline>now()",
+          [req.params.id, req.device.id, req.device.generation],
+        )
+      ).rows[0];
+      if (!task?.input.assetId)
+        fail("Media is not available for this claimed task.", 404);
+      const file = (
+        await pool.query("SELECT path,type,size FROM files WHERE id=$1", [
+          task.input.assetId,
+        ])
+      ).rows[0];
+      if (
+        !file ||
+        ![
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "video/mp4",
+          "video/quicktime",
+        ].includes(file.type) ||
+        Number(file.size) > 20 * 1024 * 1024
+      )
+        fail("Choose a saved image/video below 20 MB.");
+      res.set("Cache-Control", "no-store");
+      res.type(file.type);
+      res.sendFile(await confinedFile(fileRoot(), file.path));
     }),
   );
   router.post(
