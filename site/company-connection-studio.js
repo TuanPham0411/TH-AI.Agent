@@ -851,9 +851,9 @@ export function createConnectionStudio({
             result.append(token);
             const command = el(
               "pre",
-              'Invoke-WebRequest -UseBasicParsing "' +
+              'curl.exe --fail --location --url "' +
                 location.origin +
-                '/install-th-device.ps1" -OutFile "$env:TEMP\\install-th-device.ps1"\n& "$env:TEMP\\install-th-device.ps1" -Server "' +
+                '/install-th-device.ps1" --output "$env:TEMP\\install-th-device.ps1"\nif ($LASTEXITCODE -ne 0) { throw "Installer download failed." }\n& "$env:TEMP\\install-th-device.ps1" -Server "' +
                 location.origin +
                 '" -FullControl -EnableOdbc -EnableFacebookBrowser -RePair',
             );

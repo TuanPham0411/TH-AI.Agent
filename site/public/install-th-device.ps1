@@ -16,12 +16,29 @@ if($EnableFacebookBrowser){
  if($LASTEXITCODE -ne 0){throw 'Unable to install Playwright in the selected Python.'}
  if($BrowserChannel -eq 'chromium'){& $pythonExe -m playwright install chromium;if($LASTEXITCODE -ne 0){throw 'Unable to install Chromium.'}}
 }
+function Get-ThDeviceFile([string]$Url,[string]$Destination){
+ $temporary="$Destination.download-$PID"
+ try{
+  $curlCommand=Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue
+  if($curlCommand){
+   & $curlCommand.Source --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 --retry 2 --output $temporary --url $Url
+   if($LASTEXITCODE -ne 0){throw "Download failed (curl exit $LASTEXITCODE). Check your approved network/proxy connection; installation has stopped."}
+  }else{
+   [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+   Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $temporary -TimeoutSec 120
+  }
+  if(-not (Test-Path -LiteralPath $temporary) -or (Get-Item -LiteralPath $temporary).Length -eq 0){throw 'Downloaded file is missing or empty.'}
+  Move-Item -LiteralPath $temporary -Destination $Destination -Force
+ }finally{
+  Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+ }
+}
 $folder=Join-Path $env:LOCALAPPDATA 'ThienHa\DeviceLink'
 New-Item -ItemType Directory -Force -Path $folder | Out-Null
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls.exe $folder /inheritance:r /grant:r "${identity}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' | Out-Null
 if($LASTEXITCODE -ne 0){throw 'Unable to restrict device credential folder permissions.'}
-foreach($file in @('personal-device.py','personal-bridge.py','personal-odbc.py','facebook-browser.py','office-tool.ps1')){Invoke-WebRequest -UseBasicParsing -Uri "$($Server.TrimEnd('/'))/$file" -OutFile (Join-Path $folder $file)}
+foreach($file in @('personal-device.py','personal-bridge.py','personal-odbc.py','facebook-browser.py','office-tool.ps1')){Get-ThDeviceFile -Url "$($Server.TrimEnd('/'))/$file" -Destination (Join-Path $folder $file)}
 Write-Host "Server: $Server"
 Write-Host "Full computer control: $($FullControl.IsPresent). Runs as $identity; it does not elevate Windows privileges."
 $previousPath=Join-Path $folder 'device.json'
