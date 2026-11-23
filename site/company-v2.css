@@ -2073,3 +2073,16 @@ dialog.has-actions {
 .history-thread { display:flex; gap:16px; align-items:center; padding:12px 16px; border:1px solid #d8e3e5; border-radius:8px; background:#f8fbfc; min-width:0; }
 .history-thread .manager-row-link { display:block; min-width:0; overflow-wrap:anywhere; line-height:1.5; }
 .history-thread .quiet-button { flex-shrink:0; }
+
+/* A short swarm-cursor assembly on document entry; no overlay captures input. */
+.workspace-build-layer { position:fixed; inset:0; z-index:40; pointer-events:none; overflow:hidden; contain:strict; }
+.workspace-build-layer * { pointer-events:none; user-select:none; }
+.workspace-build-cursor { position:absolute; top:0; left:0; display:flex; align-items:flex-start; gap:0; will-change:transform,opacity; filter:drop-shadow(0 3px 5px #12303b25); }
+.workspace-build-cursor svg { width:24px; height:29px; flex:none; }
+.workspace-build-label { margin:21px 0 0 -5px; padding:4px 9px; border:1px solid #ffffffc4; border-radius:4px 9px 9px 9px; background:var(--builder-color); color:#fff; font:600 11px/1.3 TH,system-ui,sans-serif; white-space:nowrap; letter-spacing:.02em; }
+.workspace-build-frame { position:absolute; border:1px solid color-mix(in srgb,var(--builder-color) 65%,transparent); border-radius:8px; background:linear-gradient(105deg,transparent 35%,color-mix(in srgb,var(--builder-color) 5%,transparent) 50%,transparent 65%); box-shadow:inset 0 0 18px color-mix(in srgb,var(--builder-color) 5%,transparent); }
+.workspace-build-frame::before,.workspace-build-frame::after { content:''; position:absolute; width:5px; height:5px; background:#fff; border:1px solid var(--builder-color); }
+.workspace-build-frame::before { top:-3px; left:-3px; }
+.workspace-build-frame::after { bottom:-3px; right:-3px; }
+.workspace-build-cross { position:absolute; right:13px; top:13px; width:9px; height:9px; border-top:1px solid var(--builder-color); border-right:1px solid var(--builder-color); }
+@media(prefers-reduced-motion:reduce) { .workspace-build-layer { display:none; } }
