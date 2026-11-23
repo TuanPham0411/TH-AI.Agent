@@ -1,3 +1,4 @@
+import { createWorkspaceEntrance } from "./workspace-entrance.js";
 import { createWorkManagement } from "./work-management-studio.js";
 import {
   workspaceIcon,
@@ -58,6 +59,7 @@ const state = {
     detailsHeight: preference("detailsHeight", 230),
   },
   root = document.querySelector("#app");
+const entrance = createWorkspaceEntrance();
 const refreshWaiters = [];
 const seenSceneSteps = new Set();
 let resizing = false,
@@ -1092,6 +1094,7 @@ function render() {
 
   shell.append(main);
   root.append(shell);
+  entrance.prepare(root);
   if (innerWidth > 760)
     attachSplitter(document.querySelector(".conversation-resize"), {
       shell: main,
